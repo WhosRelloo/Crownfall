@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Only ever touch the Studio window named exactly **Place1**. `Tools/studio.py` refuses any other.
+- Only ever touch the Crownfall place (**placeId 93979562442002**, formerly named Place1). `Tools/studio.py` matches it by place id and refuses any other.
 - The whole game is **2.5D**: pixel sprites in a 3D collision world, with a fixed three-quarter camera.
 - Never edit a script's source in place in Studio. Change the file in `src/`, then run `python -I Tools/studio.py sync`.
 - Only sync while Studio is in Edit mode, never during Play.
@@ -72,7 +72,7 @@ The prototype (blueprint 13.1) is built in six milestones. Each milestone gets i
 - [ ] **Step 1: Write `Tools/studio.py`**
 
 ```python
-"""Crownfall Studio bridge. Only ever talks to the Roblox Studio window named exactly "Place1".
+"""Crownfall Studio bridge. Only ever talks to the Crownfall place (placeId 93979562442002, formerly "Place1").
 
 python -I Tools/studio.py sync                     rebuild every "Crownfall" folder in Place1 from src/
 python -I Tools/studio.py test [filter]            run *.spec modules in ServerStorage.Crownfall.Tests
@@ -82,7 +82,7 @@ Runs its own StudioMCP.exe (the newest under %LOCALAPPDATA%\\Roblox\\Versions) n
 """
 import glob, json, os, queue, re, subprocess, sys, threading, time
 
-PLACE = "Place1"
+PLACE = "placeId: 93979562442002"  # the Crownfall place (formerly "Place1")
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "src")
 EXE = sorted(glob.glob(os.path.expandvars(r"%LOCALAPPDATA%\Roblox\Versions\*\StudioMCP.exe")), key=os.path.getmtime)[-1]
@@ -134,7 +134,7 @@ def studio_id(c):
         r = c.req("tools/call", {"name": "list_roblox_studios", "arguments": {}})
         data = json.loads(r["result"]["content"][0]["text"])
         items = data if isinstance(data, list) else data.get("studios") or []
-        hits = [i for i in items if (i.get("name") or "") == PLACE]
+        hits = [i for i in items if PLACE in (i.get("name") or "")]
         if len(hits) == 1:
             return hits[0]["id"]
         time.sleep(2)
