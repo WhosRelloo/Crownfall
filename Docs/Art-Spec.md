@@ -1,6 +1,6 @@
 # Crownfall Sprite Production Specification
 
-Version 1 · 2026-10-27 · Crownfall only.
+Version 2 · 2026-10-27 (64 px characters in 96 px cells) · Crownfall only.
 
 The character sheets supplied so far are **visual references**: they fix the style, proportions and outfit progression (rags → gear → legend). This document defines the **production** sheets the game loads.
 
@@ -30,22 +30,22 @@ Everything below marked **MUST** is a mandatory requirement; **SHOULD** is an op
 
 | Item | Requirement |
 | --- | --- |
-| Frame (cell) size | **MUST be 80 × 80 px** for every humanoid sheet (male, female, all layers, all animations) |
-| Character height | **MUST be 48 px** from the bottom of the feet to the top of the head (hair may add up to 4 px) when standing in Idle row S |
-| Pivot (feet point) | **MUST be pixel (40, 72)**, counting from 0 at the cell's top-left corner. Feet rest on row 71; x = 40 is the centre line between the feet |
-| Margins | Free space: 16 px each side at shoulder height, 20+ px above the head, 8 px below the feet. Weapons and limbs may use it; nothing may cross the cell edge |
-| World scale | 48 px = 5 studs (Roblox character height), so **1 px = 0.1042 studs** and one 80 px cell is an 8.33 × 8.33 stud card. This replaces the placeholder's 0.25 studs/px |
+| Frame (cell) size | **MUST be 96 × 96 px** for every humanoid sheet (male, female, all layers, all animations) |
+| Character height | **MUST be 64 px** from the bottom of the feet to the top of the head (hair may add up to 4 px) when standing in Idle row S |
+| Pivot (feet point) | **MUST be pixel (48, 88)**, counting from 0 at the cell's top-left corner. Feet rest on row 87; x = 48 is the centre line between the feet |
+| Margins | Free space: about 20 px each side at shoulder height, 20+ px above the head, 8 px below the feet. Weapons and limbs may use it; nothing may cross the cell edge |
+| World scale | 64 px = 5 studs (Roblox character height), so **1 px = 0.078 studs** and one 96 px cell is a 7.5 × 7.5 stud card. This replaces the placeholder's 0.25 studs/px |
 | Pivot consistency | The pivot **MUST** stay on the same pixel in every frame of every animation, unless the motion moves the body (dodge, knockback, lunge). Then the feet move inside the cell, and the gameplay code moves the collision body by the same amount |
 
-Why 80 × 80: it fits the longsword's reach and overhead swings inside the cell, and 12 frames × 80 px = 960 px stays under Roblox's 1024 × 1024 image limit.
+Why 64 px in 96 × 96 (changed from 48 px in 80 × 80 on 2026-10-27): the approved character art has more detail than 48 px can hold. 96 px cells still fit the longsword's reach, and 10 frames × 96 px = 960 px stays under Roblox's 1024 × 1024 image limit.
 
 ## 2. Sheet dimensions and layout
 
 - **MUST:** one PNG per (rig, layer, item, animation). Examples are in section 10.
 - **MUST:** rows = directions in the order of section 3; columns = frames left to right, frame 1 in the left column.
-- **MUST:** no gutters, borders, labels or padding. Frame *n* in row *r* starts at x = (n − 1) × 80, y = r × 80.
-- **MUST:** width = frame count × 80; height = row count × 80.
-- **MUST:** at most **12 frames** per animation (960 px) and at most **8 rows** (640 px). An animation that needs more frames is split into two named animations (for example `death` and `deathloop`).
+- **MUST:** no gutters, borders, labels, arrows, info panels or padding. Frame *n* in row *r* starts at x = (n − 1) × 96, y = r × 96.
+- **MUST:** width = frame count × 96; height = row count × 96.
+- **MUST:** at most **10 frames** per animation (960 px) and at most **8 rows** (768 px). An animation that needs more frames is split into two named animations (for example `death` and `deathloop`).
 - **MUST:** every layer sheet of the same animation has exactly the same dimensions, frame count and timing as the body sheet, so one rectangle draws every layer.
 - **SHOULD:** keep sheets at exactly the computed size. No power-of-two padding; Roblox doesn't need it.
 
@@ -77,9 +77,9 @@ The blueprint has no slide, but you asked for sliding, so it is included as pend
 
 | Anim id | Frames | FPS | Mode | Rows | Status | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| `idle` | 6 | 8 | Loop | 8-dir | **MUST** (P0) | Breathing, weapon held low |
+| `idle` | 4 | 6 | Loop | 8-dir | **MUST** (P0) | Breathing, weapon held low. Only the breathing may change between frames |
 | `run` | 8 | 12 | Loop | 8-dir | **MUST** (P0) | Default movement speed; contact frames 1 and 5 |
-| `dodge` | 8 | 20 | Once | 8-dir | **MUST** (P0) | 0.4 s roll = 24 game frames. Frames 2–5 are the i-frames. The body travels ~3 studs (29 px) inside the cell along the direction |
+| `dodge` | 8 | 20 | Once | 8-dir | **MUST** (P0) | 0.4 s roll = 24 game frames. Frames 2–5 are the i-frames. The body travels up to ~2 studs (26 px) inside the cell; the gameplay code moves the rest |
 | `walk` | 8 | 10 | Loop | 8-dir | P1 | Walk toggle / analogue |
 | `sprint` | 8 | 14 | Loop | 8-dir | SHOULD | Otherwise `run` plays at 1.2× |
 | `step` | 4 | 20 | Once | 8-dir | P1 | Light-armour quickstep. This is what the reference sheet calls "dash" |
@@ -112,11 +112,11 @@ Frame numbers start at 1. **Hit** marks the frame where damage is checked. Gamep
 | `hit` | 4 | 15 | Once | | **MUST** (P0) | Light hit reaction |
 | `guardbreak` | 8 | 9 | Once | | **MUST** (P0) | Player posture break, 0.9 s |
 | `death` | 10 | 10 | Hold | | **MUST** (P0) | Ends lying on the ground |
-| `critical` | 12 | 15 | Once | Hit 7 | P1 | Finisher on a posture-broken enemy |
+| `critical` | 10 | 12 | Once | Hit 6 | P1 | Finisher on a posture-broken enemy (10-frame limit) |
 | `parrywhiff` | 4 | 13 | Once | | P1 | Mistimed tap: 18-frame (0.3 s) lockout |
 | `hitheavy` | 6 | 15 | Once | | P1 | Heavy-hit reaction |
 | `stagger` | 6 | 8 | Loop | | P1 | Posture broken (enemies 1.5 s, bosses 2.0 s); also on players stunned by a Grab |
-| `knockback` | 6 | 12 | Once | | P1 | Body slides ~2 studs (19 px) backward inside the cell |
+| `knockback` | 6 | 12 | Once | | P1 | Body slides up to ~2 studs (26 px) backward inside the cell |
 | `getup` | 6 | 10 | Once | | P1 | From knockback or a downed revive |
 | `downed` | 4 | 4 | Loop | | P1 | Co-op downed state (20 s) |
 | `heavycharge` | 2 | 6 | Loop | | SHOULD | Holding a charged attack; release plays `heavy` from frame 6 |
@@ -139,7 +139,7 @@ Frame numbers start at 1. **Hit** marks the frame where damage is checked. Gamep
 | Outline | **MUST** be 1 px on the outer silhouette, using the darkest colour of the character's palette (not pure black, e.g. #1C1622). **SHOULD:** interior lines and selective outlining (lighter outline on lit edges) |
 | Palette | **SHOULD:** at most 32 colours per character layer, using the reference sheets' earthy rag palette for starter gear |
 | Light direction | **MUST** be top-left, the same in every sheet |
-| Scaling | **MUST NOT** pre-scale. The game decides on-screen size (1 px = 0.1042 studs) |
+| Scaling | **MUST NOT** pre-scale. The game decides on-screen size (1 px = 0.078 studs) |
 | VFX sheets | Exception: effect sheets (section 9) may use partial alpha |
 
 ## 7. Male and female
@@ -166,7 +166,7 @@ Frame numbers start at 1. **Hit** marks the frame where damage is checked. Gamep
 | 8 | `weaponfront` | Weapon parts in front of the body | Shared | No |
 
 - Rags are an **outfit item** (`outfit_rags`), not a separate character. Armour hides the outfit beneath it only where it covers it, so armour sheets are drawn on top, not as full replacements.
-- **Cost (be aware):** every layer item needs every animation × every drawn direction × both rigs. One outfit for the P0 list is 85 frames × 5 rows × 2 rigs = 850 frames.
+- **Cost (be aware):** every layer item needs every animation × every drawn direction × both rigs. One outfit for the P0 list is 83 frames × 5 rows × 2 rigs = 830 frames.
 - **SHOULD:** split armour into slots (chest, legs, boots, gloves) only after the full-armour sets work; each slot multiplies the drawing work.
 - Greyscale tinting is a multiply, so it only darkens. Skin and hair **MUST** be drawn light (lightest tone near white) for every tint to work.
 
@@ -175,7 +175,7 @@ Frame numbers start at 1. **Hit** marks the frame where damage is checked. Gamep
 - **Weapons:** drawn as `weaponback` and `weaponfront` layers on the shared rig (`shared`), one pair per weapon item per animation. The artist decides per frame which parts sit behind or in front of the body. Prototype weapon: `longsword`.
 - **Clothing and armour:** layers 4–6 above, per rig, aligned pixel-perfectly to the body frames.
 - **Power effects** (Shard powers, elemental strikes, slash trails, parry sparks): Crownfall has no alchemy; its equivalent is the power and VFX system (blueprint 4.7). Effects are **not** character layers. They are separate sheets drawn on their own card just in front of the character card:
-  - **MUST:** use the same 80 × 80 cell and pivot when an effect is tied to a character pose (slash trail for `light1`), with the same rows, frames and FPS as that animation.
+  - **MUST:** use the same 96 × 96 cell and pivot when an effect is tied to a character pose (slash trail for `light1`), with the same rows, frames and FPS as that animation.
   - **MAY:** use larger cells (160 × 160, pivot at the bottom centre) for free-standing effects such as a Ward dome.
   - Partial alpha is allowed. Effects render with `LightInfluence = 0` so they glow at night.
   - Telegraph colours and shapes (white glint, amber chevron, red sigils) come from blueprint 4.4 and **MUST** be kept.
@@ -210,11 +210,11 @@ Examples: `cf_humanm_full_rags_idle.png` (Phase 1), `cf_humanf_hair_ponytail_run
 ```lua
 return {
 	Rig = "humanm",
-	Cell = 80, -- px
-	Pivot = Vector2.new(40, 72), -- px from the cell's top-left
-	StudsPerPixel = 5 / 48,
+	Cell = 96, -- px
+	Pivot = Vector2.new(48, 88), -- px from the cell's top-left
+	StudsPerPixel = 5 / 64,
 	Anims = {
-		idle = { Frames = 6, FPS = 8, Mode = "Loop", Rows = 5 },
+		idle = { Frames = 4, FPS = 6, Mode = "Loop", Rows = 5 },
 		light1 = { Frames = 6, FPS = 15, Mode = "Once", Rows = 5, Hit = 3 },
 		climbup = { Frames = 6, FPS = 10, Mode = "Loop", Rows = 2, Facings = { "N", "W" } },
 	},
@@ -228,9 +228,9 @@ return {
 
 ## 11. Races, monsters and mounts
 
-- **Other humanoid races** with human proportions (48 px tall) reuse the `humanm` / `humanf` animations and add race features as `face` or `hair` layer items (ears, horns, markings).
+- **Other humanoid races** with human proportions (64 px tall) reuse the `humanm` / `humanf` animations and add race features as `face` or `hair` layer items (ears, horns, markings).
 - **Different body sizes** (short or very tall races) are new rigs with their own full animation set. Same naming, format, direction order and frame rules; the cell size may change.
-- **Monsters and mounts** are their own rigs. They **MUST** keep the bottom-centre pivot and direction order. Cell sizes: 80 (human-sized), 128 (wolves, horses), 192 (trolls, bosses), and 256 for dragons, whose sheets split into several files to stay under 1024 px. Each rig's animation list is written when its milestone starts (M4 for enemies).
+- **Monsters and mounts** are their own rigs. They **MUST** keep the bottom-centre pivot and direction order. Cell sizes: 96 (human-sized), 128 (wolves, horses), 192 (trolls, bosses), and 256 for dragons, whose sheets split into several files to stay under 1024 px. Each rig's animation list is written when its milestone starts (M4 for enemies).
 - **Mounted riders:** a `ride` animation set on the human rigs (idle, walk, run, attack), drawn to sit on each mount rig's saddle point. Defined with mounts.
 
 ## 12. Production checklist, by priority
@@ -239,22 +239,22 @@ return {
 
 Goal: movement and core combat look right in M1–M3.
 
-- [ ] `cf_humanm_full_rags_idle.png` (6 × 5 rows, 480 × 400)
-- [ ] `cf_humanm_full_rags_run.png` (8 × 5, 640 × 400)
-- [ ] `cf_humanm_full_rags_dodge.png` (8 × 5, 640 × 400)
-- [ ] `cf_humanm_full_rags_light1.png` (6 × 5, 480 × 400)
-- [ ] `cf_humanm_full_rags_light2.png` (6 × 5, 480 × 400)
-- [ ] `cf_humanm_full_rags_light3.png` (8 × 5, 640 × 400)
-- [ ] `cf_humanm_full_rags_heavy.png` (10 × 5, 800 × 400)
-- [ ] `cf_humanm_full_rags_block.png` (4 × 5, 320 × 400)
-- [ ] `cf_humanm_full_rags_blockhit.png` (3 × 5, 240 × 400)
-- [ ] `cf_humanm_full_rags_parry.png` (4 × 5, 320 × 400)
-- [ ] `cf_humanm_full_rags_hit.png` (4 × 5, 320 × 400)
-- [ ] `cf_humanm_full_rags_guardbreak.png` (8 × 5, 640 × 400)
-- [ ] `cf_humanm_full_rags_death.png` (10 × 5, 800 × 400)
+- [ ] `cf_humanm_full_rags_idle.png` (4 × 5, 384 × 480)
+- [ ] `cf_humanm_full_rags_run.png` (8 × 5, 768 × 480)
+- [ ] `cf_humanm_full_rags_dodge.png` (8 × 5, 768 × 480)
+- [ ] `cf_humanm_full_rags_light1.png` (6 × 5, 576 × 480)
+- [ ] `cf_humanm_full_rags_light2.png` (6 × 5, 576 × 480)
+- [ ] `cf_humanm_full_rags_light3.png` (8 × 5, 768 × 480)
+- [ ] `cf_humanm_full_rags_heavy.png` (10 × 5, 960 × 480)
+- [ ] `cf_humanm_full_rags_block.png` (4 × 5, 384 × 480)
+- [ ] `cf_humanm_full_rags_blockhit.png` (3 × 5, 288 × 480)
+- [ ] `cf_humanm_full_rags_parry.png` (4 × 5, 384 × 480)
+- [ ] `cf_humanm_full_rags_hit.png` (4 × 5, 384 × 480)
+- [ ] `cf_humanm_full_rags_guardbreak.png` (8 × 5, 768 × 480)
+- [ ] `cf_humanm_full_rags_death.png` (10 × 5, 960 × 480)
 - [ ] All 13 uploaded, IDs in `Art/Sprites/asset-ids.json`
 
-Total: 85 frames per direction × 5 drawn directions = **425 frames**.
+Total: 83 frames per direction × 5 drawn directions = **415 frames**.
 
 **Start with one sheet:** before the other 12, make `idle` and test it in the game. That confirms the size, pivot and scale.
 
@@ -282,4 +282,4 @@ Total: 85 frames per direction × 5 drawn directions = **425 frames**.
 ## 13. Open items
 
 - [ ] Decide whether slide joins the Crownfall design (blueprint 4.10 has no slide).
-- [ ] Confirm the 48 px character height against the reference sheets once the first `idle` sheet is in the game.
+- [ ] Confirm the 64 px character height in the game with the first `idle` test sheet.
