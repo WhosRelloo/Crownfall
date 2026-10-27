@@ -10,6 +10,14 @@
 
 **Spec:** `Docs/Design-Blueprint.md`, mainly section 4 (combat and movement), 13.1 (prototype) and the Platform assumption (2.5D).
 
+## As built (2026-10-27)
+
+Tasks 1-5 were built as written. Tasks 6-7 changed to match spec v2 and the uploaded idle sheet:
+- `Facing.FromScreen` returns one of 8 directions; new `Render/SheetMath.luau` finds a frame in a sheet (standard rows with the east side mirrored, or an explicit `Layout`).
+- `HeroSprite` follows the same art contract as a sheet manifest (`Kind`, `Pivot`, `StudsPerPixel`, `Anims`, `Draw`).
+- `SpriteCard` draws either kind; `Render/Art/humanm.luau` is the manifest for the uploaded idle sheet, chosen by `Config.Render.Art`.
+- Final counts: 44 specs passing, 9/9 Play checks passing.
+
 ## Global Constraints
 
 - Only ever touch the Crownfall place (**placeId 93979562442002**, formerly named Place1). `Tools/studio.py` matches it by place id and refuses any other.
