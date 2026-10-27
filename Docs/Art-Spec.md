@@ -226,6 +226,19 @@ return {
 
 `Rows = 5` means drawn rows S, SW, W, NW, N, with the east side mirrored; `Rows = 8` means all directions drawn. The anim ids, frame counts and FPS in this manifest **MUST** equal the tables in sections 4–5. A sheet whose pixel size disagrees with its manifest entry is rejected by the manifest tool.
 
+**Non-standard layouts (accepted, so already-uploaded sheets don't need re-uploading):** an anim entry may carry an explicit `Layout` that maps each direction to the cell where its frame 1 starts, plus `Pivot` and per-direction `FeetX` overrides. Frames still run left to right from that cell. Example, matching the uploaded idle sheet `120091824682648`:
+
+```lua
+idle = {
+	Frames = 4, FPS = 6, Mode = "Loop",
+	Layout = { S = {0, 0}, SW = {0, 4}, W = {1, 0}, SE = {1, 4}, NW = {2, 0}, N = {2, 4}, NE = {3, 0}, E = {3, 4} }, -- {row, col}
+	Pivot = Vector2.new(48, 80),
+	FeetX = { S = 48, SW = 43, W = 42, SE = 52, NW = 45, N = 44, NE = 48, E = 54 },
+},
+```
+
+New sheets **SHOULD** still follow the standard layout; `Layout` exists so finished uploads keep working.
+
 ## 11. Races, monsters and mounts
 
 - **Other humanoid races** with human proportions (64 px tall) reuse the `humanm` / `humanf` animations and add race features as `face` or `hair` layer items (ears, horns, markings).
