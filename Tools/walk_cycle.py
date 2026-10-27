@@ -13,7 +13,8 @@ hand-placed regions (PARTS, measured on 8x gridded views of each base pose) and 
   body   bobs 1 px on the passing frames
 Every body part moves rigidly (translate/rotate only), so proportions never change; only cloth bends.
 Torso pixels uncovered by a moving arm are filled from their neighbours, and a cleanup pass fills
-1-2 px gaps and removes stray islands. Output follows
+1-2 px gaps and removes stray islands; finally every empty space inside the outline is filled
+(except right beside the sword blade). Output follows
 Docs/Art-Spec.md: rows S, SW, W, NW, N, NE, E, SE; 8 frames of 96 x 96; feet on the pivot (48, 88);
 hard alpha.
 """
@@ -330,6 +331,30 @@ def fill_from_neighbours(im, spots):
         px[x, y] = max(set(near), key=near.count)
 
 
+INTERIOR_REACH = 4  # px: a gap with character pixels this close on all four sides counts as inside
+
+
+def interior_gaps(im):
+    """Transparent pixels with character pixels within INTERIOR_REACH on the left, right, above and below:
+    any empty space inside the character's outline. Pixels touching the sword blade are skipped so the
+    blade never gets glued to the body."""
+    px = im.load()
+    w, h = im.size
+    out = []
+    for y in range(h):
+        for x in range(w):
+            if px[x, y][3]:
+                continue
+            if any(px[x + dx, y + dy][3] and steel(px[x + dx, y + dy])
+                   for dx, dy in NEIGHBOURS if 0 <= x + dx < w and 0 <= y + dy < h):
+                continue
+            reach = range(1, INTERIOR_REACH + 1)
+            if (any(x - k >= 0 and px[x - k, y][3] for k in reach) and any(x + k < w and px[x + k, y][3] for k in reach)
+                    and any(y - k >= 0 and px[x, y - k][3] for k in reach) and any(y + k < h and px[x, y + k][3] for k in reach)):
+                out.append((x, y))
+    return out
+
+
 def cleanup(im):
     """Drop stray islands of 5 pixels or fewer, then close every gap a moving part opened."""
     px = im.load()
@@ -360,6 +385,12 @@ def cleanup(im):
         fill_from_neighbours(im, [(x, y) for x, y in notches(im) if HIP - 4 <= y < HIP + 8])
     for _ in range(20):
         spots = holes(im)
+        if not spots:
+            break
+        fill_from_neighbours(im, spots)
+    # Last: close every remaining empty space inside the outline, so the character reads as solid.
+    for _ in range(INTERIOR_REACH * 2):
+        spots = interior_gaps(im)
         if not spots:
             break
         fill_from_neighbours(im, spots)
