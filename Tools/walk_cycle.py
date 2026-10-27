@@ -1,6 +1,6 @@
-"""Build an 8-frame walk cycle sheet from one neutral standing frame per direction.
+"""Build an 8-frame walk or run cycle sheet from one neutral standing frame per direction.
 
-python Tools/walk_cycle.py <src_dir> <out.png> [--prefix cf_human_m_full_rags_walk]
+python Tools/walk_cycle.py <src_dir> <out.png> [--style walk|run] [--prefix cf_human_m_full_rags_walk]
 
 Reads <prefix>_<LABEL>_frame01.png for each direction, using LABEL_FOR to pick the file that really
 shows each direction (the walk_v2 upload's labels were shifted). The figure is split into parts with
@@ -28,7 +28,33 @@ from PIL import Image
 ROWS = ["S", "SW", "W", "NW", "N", "NE", "E", "SE"]
 # Real direction -> label of the walk_v2 file that shows it (checked against the idle sheet in Studio).
 LABEL_FOR = {"S": "N", "SE": "NE", "E": "E", "SW": "SE", "NE": "S", "N": "SW", "NW": "W", "W": "NW"}
-BOB = [0, 0, -1, -1, 0, 0, -1, -1]  # contact frames 1 and 5 low, passing frames high
+# Motion settings per animation. Pixel numbers are at the 64 px character scale.
+STYLES = {
+    "walk": {
+        "bob": [0, 0, -1, -1, 0, 0, -1, -1],  # contact frames 1 and 5 low, passing frames high
+        "airborne": [],                         # frames with both feet off the ground
+        "stride": {"side": 8, "diagonal": 3, "front": 0},  # boot reach in px
+        "lift": {"side": 2, "diagonal": 1, "front": 2},    # swinging foot lift in px
+        "arm_deg": {"side": 10, "diagonal": 7, "front": 5},
+        "cloak_trail": 1.0,                     # side views: how far the cloak tail trails (px at the hem)
+        "cloak_sway": 1.0,                      # front/back views: flap sway (px at the hem)
+        "lean_deg": 0,                          # forward lean of the upper body about the hip
+    },
+    "run": {
+        # land, absorb, push off, flight (highest). Never below 0: the sword tip hangs just above the ground.
+        "bob": [0, 0, -1, -2, 0, 0, -1, -2],
+        "airborne": [3, 7],
+        # Stride is held to 9 px: the leg above the boot slants to reach it, and past ~9 px the slant
+        # makes the leg read visibly longer. Speed comes from the lean, knee lift and arm pump instead.
+        "stride": {"side": 9, "diagonal": 4, "front": 0},
+        "lift": {"side": 3, "diagonal": 2, "front": 4},
+        "arm_deg": {"side": 18, "diagonal": 12, "front": 9},  # more and the held sword swings out level
+        "cloak_trail": 2.5,
+        "cloak_sway": 2.0,
+        "lean_deg": 7,
+    },
+}
+STYLE = STYLES["walk"]
 CELL, PIVOT = 96, (48, 88)
 HIP = 66  # first leg row after pivoting
 BOOT_ROWS = 9  # bottom rows of each leg that make up the boot; moved as one block, never rotated
@@ -208,7 +234,7 @@ def frame(base, direction, i):
 
     # Underlayer: the cloth's resting shape, 30% darker, drawn first. When the tunic flap or cloak tail
     # sways away, this shows as the shaded fabric/pants behind it instead of an empty space.
-    layers.append({(x, y + BOB[i]): (int(c[0] * 0.7), int(c[1] * 0.7), int(c[2] * 0.7), c[3])
+    layers.append({(x, y + STYLE["bob"][i]): (int(c[0] * 0.7), int(c[1] * 0.7), int(c[2] * 0.7), c[3])
                    for (x, y), c in ((pt, colour[pt]) for pt, lab in labels.items() if lab == "cloak")})
 
     # Legs. The boot is never rotated or cropped: it slides as one upright block (sole flat on the ground
@@ -218,12 +244,8 @@ def frame(base, direction, i):
     #               opposite phase so they pass each other on frames 3 and 7
     #   diagonals:  the two drawn legs (split at the centre line) do the same with a shorter stride
     #   front/back: the stepping leg lifts straight up (its top tucks under the tunic)
-    if kind == "side":
-        stride, lift = 8, 2  # wide enough that the two boots never touch at full stride
-    elif diagonal:
-        stride, lift = 3, 1
-    else:
-        stride, lift = 0, 2
+    view = "side" if kind == "side" else "diagonal" if diagonal else "front"
+    stride, lift = STYLE["stride"][view], STYLE["lift"][view]  # walk side stride 8: boots never touch
     boot_top = bottom - BOOT_ROWS + 1
     # Where to split the two drawn legs on each row: the middle of the widest see-through gap near the
     # centre line (so a boot is never sliced); rows where the legs touch use the centre line.
@@ -264,7 +286,9 @@ def frame(base, direction, i):
         layer = {}
         # The planted leg stays on the ground. A swinging leg lifts as one piece (its top tucks under the
         # body), together with the body bob, so no row is ever stretched or skipped.
-        dy = BOB[i] - up if swinging > 0 else 0
+        dy = min(0, STYLE["bob"][i]) - up if swinging > 0 else 0  # a foot never goes below the ground line
+        if i in STYLE["airborne"] and swinging == 0:
+            dy = -1  # flight: the trailing foot has left the ground too
         boot = set()
         for (x, y), c in pts.items():
             t = 1.0 if y >= boot_top else (y - HIP) / max(1, boot_top - HIP)
@@ -281,14 +305,14 @@ def frame(base, direction, i):
 
     # Body (torso, head, hair): rigid, with the bob. In side views the top two rows of hair trail
     # 1 px behind on the rising frames; the head keeps its size.
-    rising = BOB[i] < BOB[i - 1]
+    rising = STYLE["bob"][i] < STYLE["bob"][i - 1]
     top = min(y for (x, y), lab in labels.items() if lab == "body")
     body = {}
     for (x, y), lab in labels.items():
         if lab != "body":
             continue
         dx = -facing if (kind == "side" and rising and y <= top + 1) else 0
-        body[(x + dx, y + BOB[i])] = colour[(x, y)]
+        body[(x + dx, y + STYLE["bob"][i])] = colour[(x, y)]
     # Where an arm moved off the body, show the torso/sleeve behind it: the arm's own pixel, 35% darker.
     # Only inside the body's outline: between the leftmost and rightmost non-arm pixel of that row.
     span = {}
@@ -299,7 +323,7 @@ def frame(base, direction, i):
     for (x, y), lab in labels.items():
         if not isinstance(lab, tuple) or y not in span:
             continue
-        spot = (x, y + BOB[i])
+        spot = (x, y + STYLE["bob"][i])
         if spot not in body and span[y][0] <= x <= span[y][1]:
             r_, g_, b_, a_ = colour[(x, y)]
             body[spot] = (int(r_ * 0.65), int(g_ * 0.65), int(b_ * 0.65), a_)
@@ -313,11 +337,11 @@ def frame(base, direction, i):
             continue
         t = min(1.0, max(0.0, (y - cl["anchor"]) / max(1, cl["hem"] - cl["anchor"])))
         if kind == "side":
-            dx = -facing * round((1 + 0.5 + 0.5 * math.sin(2 * p - 0.8)) * t)
+            dx = -facing * round(STYLE["cloak_trail"] * (1 + 0.5 + 0.5 * math.sin(2 * p - 0.8)) * t)
         else:
-            amp = 1.5 if kind == "back" else 1.0
+            amp = (1.5 if kind == "back" else 1.0) * STYLE["cloak_sway"]
             dx = round(amp * math.sin(p - 0.8) * t)
-        dy = BOB[i] - (1 if (kind == "side" and BOB[i] < 0 and t > 0.6) else 0)
+        dy = STYLE["bob"][i] - (1 if (kind == "side" and STYLE["bob"][i] < 0 and t > 0.6) else 0)
         # Cloth stretches: cover every pixel between where it was and where it moved, so no gap opens.
         step = 1 if dx >= 0 else -1
         for k in range(0, dx + step, step) if dx else (0,):
@@ -330,16 +354,30 @@ def frame(base, direction, i):
         # Rigid swing about the shoulder: no stretching, so the arm keeps its length.
         scale = 1.0
         if kind == "side":
-            angle = -facing * math.radians(10) * math.cos(p)  # counter-swing: back while the leading leg is forward
+            angle = -facing * math.radians(STYLE["arm_deg"]["side"]) * math.cos(p)  # counter-swing: back while the leading leg is forward
         else:
             fwd = math.sin(p) * arm["phase"]
             outward = -1 if arm["pivot"][0] < cx else 1  # which side of the body this arm hangs on
-            deg = 7 if diagonal else 5
+            deg = STYLE["arm_deg"]["diagonal" if diagonal else "front"]
             angle = math.radians(deg) * fwd * (facing if diagonal else outward)
         pts = {pt: colour[pt] for pt, lab in labels.items() if lab == ("arm", a)}
         blade = {pt: colour[pt] for pt, lab in labels.items() if lab == ("sword", a)}
-        layers.append(transform(pts, arm["pivot"], angle, scale, (0, BOB[i])))
-        layers.append(transform(blade, arm["pivot"], angle, scale, (0, BOB[i])))
+        layers.append(transform(pts, arm["pivot"], angle, scale, (0, STYLE["bob"][i])))
+        layers.append(transform(blade, arm["pivot"], angle, scale, (0, STYLE["bob"][i])))
+
+    # Forward lean: the whole upper body (cloth underlayer, torso, head, cloak, arms, sword) tilts as one
+    # rigid piece about the hip, so nothing in it stretches. Full lean from the side, half on diagonals;
+    # a lean toward or away from the camera doesn't show, so front/back views stay upright.
+    lean = STYLE["lean_deg"] * (1.0 if kind == "side" else 0.5 if diagonal else 0.0)
+    if lean:
+        under, legs_layers, rest = layers[0], layers[1:3], layers[3:]
+        upper = {}
+        for layer in rest:
+            upper.update(layer)
+        hip = (round(cx), HIP + STYLE["bob"][i])
+        angle = -(facing or 1) * math.radians(lean)  # negative tips the top toward +x when facing right
+        # the cloth underlayer leans too but stays beneath the legs
+        layers = [transform(under, hip, angle, 1.0, (0, 0))] + legs_layers + [transform(upper, hip, angle, 1.0, (0, 0))]
 
     out = Image.new("RGBA", base.size, (0, 0, 0, 0))
     dst = out.load()
@@ -513,7 +551,10 @@ def main():
     ap.add_argument("src_dir")
     ap.add_argument("out")
     ap.add_argument("--prefix", default="cf_human_m_full_rags_walk")
+    ap.add_argument("--style", default="walk", choices=sorted(STYLES))
     a = ap.parse_args()
+    global STYLE
+    STYLE = STYLES[a.style]
 
     sheet = Image.new("RGBA", (CELL * 8, CELL * len(ROWS)), (0, 0, 0, 0))
     for r, direction in enumerate(ROWS):

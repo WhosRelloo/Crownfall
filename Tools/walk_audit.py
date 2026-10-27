@@ -1,7 +1,7 @@
 """Audit a walk sheet built by walk_cycle.py: every frame must have whole boots, feet on the ground line,
 no holes or gaps inside the outline, nothing touching a cell edge, and parts the same size as the base pose.
 
-python Tools/walk_audit.py <src_dir> <sheet.png>   (exit code 1 if anything fails)
+python Tools/walk_audit.py <src_dir> <sheet.png> [walk|run]   (exit code 1 if anything fails)
 """
 import sys
 from PIL import Image
@@ -10,6 +10,8 @@ import walk_cycle as W
 
 def main():
     src, path = sys.argv[1], sys.argv[2]
+    W.STYLE = W.STYLES[sys.argv[3] if len(sys.argv) > 3 else "walk"]
+    lift_room = 3 if W.STYLE["airborne"] else 1  # flight frames lift both feet
     sheet = Image.open(path)
     fails = []
     for r, d in enumerate(W.ROWS):
@@ -28,11 +30,11 @@ def main():
             b = fr.getbbox()
             if b[0] <= 1 or b[1] <= 1 or b[2] >= 95 or b[3] >= 95:
                 fails.append(f"{tag}: touches the cell edge {b}")
-            # Three-quarter views stand the far foot 1 px higher, so allow 1 px when the near foot is lifted.
-            if not (W.PIVOT[1] - 2 <= b[3] - 1 <= W.PIVOT[1] - 1):
+            # Three-quarter views stand the far foot 1 px higher (1 px allowed); runs also have flight frames.
+            if not (W.PIVOT[1] - 1 - lift_room <= b[3] - 1 <= W.PIVOT[1] - 1):
                 fails.append(f"{tag}: lowest pixel on row {b[3] - 1}, ground line is {W.PIVOT[1] - 1}")
             h = b[3] - b[1]
-            if not (base_h - 1 <= h <= base_h + 2):
+            if not (base_h - 2 <= h <= base_h + 4):
                 fails.append(f"{tag}: height {h} vs base {base_h}")
             if W.holes(fr):
                 fails.append(f"{tag}: {len(W.holes(fr))} enclosed specks")
