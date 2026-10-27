@@ -231,9 +231,9 @@ return {
 ```lua
 idle = {
 	Frames = 4, FPS = 6, Mode = "Loop",
-	Layout = { S = {0, 0}, SW = {0, 4}, W = {1, 0}, SE = {1, 4}, NW = {2, 0}, N = {2, 4}, NE = {3, 0}, E = {3, 4} }, -- {row, col}
+	Layout = { S = {0, 0}, SE = {0, 4}, E = {1, 0}, SW = {1, 4}, NE = {2, 0}, N = {2, 4}, NW = {3, 0}, W = {3, 4} }, -- {row, col}
 	Pivot = Vector2.new(48, 80),
-	FeetX = { S = 48, SW = 43, W = 42, SE = 52, NW = 45, N = 44, NE = 48, E = 54 },
+	FeetX = { S = 48, SE = 43, E = 42, SW = 52, NE = 45, N = 44, NW = 48, W = 54 },
 },
 ```
 

@@ -33,6 +33,10 @@ Config.Durability = {
 	Wear = { Hit = 1, Block = 2, GuardBroken = 8, PerfectParry = 0.1 },
 }
 
+Config.Render = {
+	Art = "humanm", -- manifest in Render/Art; falls back to the code-drawn placeholder if missing
+}
+
 Config.Camera = {
 	Pitch = 40, -- degrees down from horizontal
 	Distance = 70, -- studs from the focus point

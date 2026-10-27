@@ -1,5 +1,5 @@
 {
- "_note": "Uploaded by WhosRello on 2026-10-27. The game loads only the 'use' entries; the rest are kept for reference. Block order of the 8-dir sheet was checked in Studio.",
+ "_note": "Uploaded by WhosRello on 2026-10-27. The game loads only the 'use' entries; the rest are kept for reference. Block order of the 8-dir sheet was checked in Studio at 3.5x zoom and in Play (corrected 2026-10-27).",
  "use": {
   "cf_human_m_full_rags_idle_v2_8dir_4frames": {
    "id": 120091824682648,
@@ -15,19 +15,19 @@
      0,
      0
     ],
-    "SW": [
+    "SE": [
      0,
      4
     ],
-    "W": [
+    "E": [
      1,
      0
     ],
-    "SE": [
+    "SW": [
      1,
      4
     ],
-    "NW": [
+    "NE": [
      2,
      0
     ],
@@ -35,11 +35,11 @@
      2,
      4
     ],
-    "NE": [
+    "NW": [
      3,
      0
     ],
-    "E": [
+    "W": [
      3,
      4
     ]
@@ -47,13 +47,13 @@
    "feet_y": 79,
    "feet_x": {
     "S": 48,
-    "SW": 43,
-    "W": 42,
-    "SE": 52,
-    "NW": 45,
+    "SE": 43,
+    "E": 42,
+    "SW": 52,
+    "NE": 45,
     "N": 44,
-    "NE": 48,
-    "E": 54
+    "NW": 48,
+    "W": 54
    }
   }
  },

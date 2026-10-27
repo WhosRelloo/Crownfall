@@ -87,13 +87,13 @@ local UPLOADED_IDLE = {
 	Frames = 4,
 	FPS = 6,
 	Mode = "Loop",
-	Layout = { S = { 0, 0 }, SW = { 0, 4 }, W = { 1, 0 }, SE = { 1, 4 }, NW = { 2, 0 }, N = { 2, 4 }, NE = { 3, 0 }, E = { 3, 4 } },
+	Layout = { S = { 0, 0 }, SE = { 0, 4 }, E = { 1, 0 }, SW = { 1, 4 }, NE = { 2, 0 }, N = { 2, 4 }, NW = { 3, 0 }, W = { 3, 4 } },
 	Pivot = Vector2.new(48, 80),
-	FeetX = { S = 48, SW = 43, W = 42, SE = 52, NW = 45, N = 44, NE = 48, E = 54 },
+	FeetX = { S = 48, SE = 43, E = 42, SW = 52, NE = 45, N = 44, NW = 48, W = 54 },
 }
 
 spec["layout sheets read the listed cell"] = function()
-	local r = SheetMath.Rect(UPLOADED_IDLE, "SE", 2, 96, Vector2.new(48, 88))
+	local r = SheetMath.Rect(UPLOADED_IDLE, "SW", 2, 96, Vector2.new(48, 88))
 	T.eq(r.Offset, Vector2.new(480, 96))
 	T.eq(r.Size, Vector2.new(96, 96))
 	T.eq(r.Pivot, Vector2.new(52, 80), "per-direction feet x and the sheet's own pivot y")

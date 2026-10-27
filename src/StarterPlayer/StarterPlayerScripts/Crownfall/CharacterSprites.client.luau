@@ -1,0 +1,86 @@
+-- Hides every character's Roblox body on this client and draws a 2.5D sprite card in its place.
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local RS = game:GetService("ReplicatedStorage")
+
+local Config = require(RS.Crownfall.Shared.Config)
+local Render = RS.Crownfall.Render
+local SpriteCard = require(Render.SpriteCard)
+local SheetMath = require(Render.SheetMath)
+local Facing = require(Render.Facing)
+local CameraMath = require(Render.CameraMath)
+
+local MOVING_SPEED = 1 -- studs/s
+
+local artModule = Render:FindFirstChild("Art") and Render.Art:FindFirstChild(Config.Render.Art)
+local art = require(artModule or Render.HeroSprite)
+
+local camera = workspace.CurrentCamera
+local folder = Instance.new("Folder")
+folder.Name = "CrownfallSprites"
+folder.Parent = workspace
+
+local tracked = {} -- [character Model] = { card, direction, anim, startedAt }
+
+local function hide(inst: Instance)
+	if inst:IsA("BasePart") or inst:IsA("Decal") then
+		inst.Transparency = 1
+	end
+end
+
+local function untrack(character: Model)
+	local t = tracked[character]
+	if t then
+		t.card:Destroy()
+		tracked[character] = nil
+	end
+end
+
+local function track(character: Model)
+	untrack(character)
+	for _, d in ipairs(character:GetDescendants()) do
+		hide(d)
+	end
+	character.DescendantAdded:Connect(hide)
+	tracked[character] = { card = SpriteCard.new(art, folder), direction = "S", anim = "idle", startedAt = os.clock() }
+end
+
+local function watch(player: Player)
+	if player.Character then
+		track(player.Character)
+	end
+	player.CharacterAdded:Connect(track)
+	player.CharacterRemoving:Connect(untrack)
+end
+
+for _, p in ipairs(Players:GetPlayers()) do
+	watch(p)
+end
+Players.PlayerAdded:Connect(watch)
+
+RunService:BindToRenderStep("CrownfallSprites", Enum.RenderPriority.Camera.Value + 2, function()
+	local now = os.clock()
+	for character, t in pairs(tracked) do
+		local root = character.Parent and character:FindFirstChild("HumanoidRootPart")
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		if not root or not humanoid then
+			if not character.Parent then
+				untrack(character)
+			end
+			continue
+		end
+		local velocity = root.AssemblyLinearVelocity * Vector3.new(1, 0, 1)
+		local anim = "idle"
+		if velocity.Magnitude > MOVING_SPEED then
+			t.direction = Facing.FromScreen(CameraMath.ToScreen(velocity))
+			anim = "run"
+		end
+		if anim ~= t.anim then
+			t.anim, t.startedAt = anim, now
+		end
+		local def = art.Anims[anim] or art.Anims.idle
+		t.card:Show(t.direction, anim, SheetMath.FrameAt(def, now - t.startedAt))
+		local foot = root.Position - Vector3.new(0, humanoid.HipHeight + root.Size.Y / 2, 0)
+		t.card:Place(foot, camera.CFrame)
+	end
+end)
