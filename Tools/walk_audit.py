@@ -31,10 +31,13 @@ def main():
             if b[0] <= 1 or b[1] <= 1 or b[2] >= 95 or b[3] >= 95:
                 fails.append(f"{tag}: touches the cell edge {b}")
             # Three-quarter views stand the far foot 1 px higher (1 px allowed); runs also have flight frames.
-            if not (W.PIVOT[1] - 1 - lift_room <= b[3] - 1 <= W.PIVOT[1] - 1):
+            room = 6 if f in W.STYLE["airborne"] else lift_room  # airborne frames: both feet are up
+            if not (W.PIVOT[1] - 1 - room <= b[3] - 1 <= W.PIVOT[1] - 1):
                 fails.append(f"{tag}: lowest pixel on row {b[3] - 1}, ground line is {W.PIVOT[1] - 1}")
             h = b[3] - b[1]
-            if not (base_h - 2 <= h <= base_h + 4):
+            # A forward lean tips the head lower without changing any part's size.
+            lean_room = 2 + (4 if W.STYLE["lean_deg"] else 0)
+            if not (base_h - lean_room <= h <= base_h + 4):
                 fails.append(f"{tag}: height {h} vs base {base_h}")
             if W.holes(fr):
                 fails.append(f"{tag}: {len(W.holes(fr))} enclosed specks")

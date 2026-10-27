@@ -40,18 +40,22 @@ STYLES = {
         "cloak_sway": 1.0,                      # front/back views: flap sway (px at the hem)
         "lean_deg": 0,                          # forward lean of the upper body about the hip
     },
-    "run": {
-        # land, absorb, push off, flight (highest). Never below 0: the sword tip hangs just above the ground.
-        "bob": [0, 0, -1, -2, 0, 0, -1, -2],
+    "run": {  # a sprint: two-segment legs with real knee bends, hard lean, high knees, heel kick
+        "bob": [0, 0, -1, -2, 0, 0, -1, -2],  # front/back views (side and diagonal height comes from the legs)
         "airborne": [3, 7],
-        # Stride is held to 9 px: the leg above the boot slants to reach it, and past ~9 px the slant
-        # makes the leg read visibly longer. Speed comes from the lean, knee lift and arm pump instead.
-        "stride": {"side": 9, "diagonal": 4, "front": 0},
-        "lift": {"side": 3, "diagonal": 2, "front": 4},
-        "arm_deg": {"side": 18, "diagonal": 12, "front": 9},  # more and the held sword swings out level
-        "cloak_trail": 2.5,
-        "cloak_sway": 2.0,
-        "lean_deg": 7,
+        "stride": {"side": 0, "diagonal": 0, "front": 0},
+        "lift": {"side": 0, "diagonal": 0, "front": 5},
+        # Per-leg sprint cycle, (thigh, knee) in degrees: thigh + = forward, knee - = shin folds back.
+        # One leg plays phase i, the other phase i + 4. Phases 0-2 carry the body; 3 and 7 are airborne.
+        # The planted phases stay nearly straight so the body never sinks (the sword tip hangs just above the floor).
+        "poses": [(18, -6), (6, -14), (-10, -6), (-30, -20), (-38, -75), (-10, -110), (40, -95), (45, -35)],
+        "stance": [0, 1, 2],
+        "flight_lift": 2,
+        "diagonal_scale": 0.4,  # on a diagonal most of the swing points toward/away from the camera
+        "arm_deg": {"side": 22, "diagonal": 14, "front": 10},
+        "cloak_trail": 4.0,
+        "cloak_sway": 2.5,
+        "lean_deg": 14,
     },
 }
 STYLE = STYLES["walk"]
@@ -208,7 +212,7 @@ def transform(points, pivot, angle, scale_y, shift):
     c, s = math.cos(angle), math.sin(angle)
     xs = [p[0] for p in points]
     ys = [p[1] for p in points]
-    pad = 16  # room for a rotated sword tip
+    pad = 24  # room for a rotated sword tip or a kicked-up shin
     out = {}
     for dy in range(min(ys) - pad, max(ys) + pad + 1):
         for dx in range(min(xs) - pad, max(xs) + pad + 1):
@@ -221,6 +225,76 @@ def transform(points, pivot, angle, scale_y, shift):
     return out
 
 
+def leg_geometry(bottom):
+    hip_y = HIP - 1
+    ankle_y = bottom - BOOT_ROWS + 1
+    knee_y = (HIP + ankle_y) // 2
+    return hip_y, knee_y, ankle_y
+
+
+def leg_pose(phase, diagonal):
+    a1, a2 = STYLE["poses"][phase % 8]
+    k = STYLE["diagonal_scale"] if diagonal else 1.0
+    return math.radians(a1 * k), math.radians(a2 * k)
+
+
+def body_drop(i, bottom, diagonal):
+    """How far the body sits below standing height (px, + = lower) so the planted foot is on the ground.
+    Airborne frames rise flight_lift above their neighbours."""
+    hip_y, knee_y, ankle_y = leg_geometry(bottom)
+    if i in STYLE["airborne"]:
+        before = body_drop((i - 1) % 8, bottom, diagonal)
+        after = body_drop((i + 1) % 8, bottom, diagonal)
+        return round((before + after) / 2) - STYLE["flight_lift"]
+    phase = i if i % 8 in STYLE["stance"] else i + 4
+    a1, a2 = leg_pose(phase, diagonal)
+    reach = (knee_y - hip_y) * math.cos(a1) + (ankle_y - knee_y) * math.cos(a1 + a2)
+    return round((ankle_y - hip_y) - reach)
+
+
+def posed_legs(labels, colour, i, cx, bottom, split_x, kind, facing, diagonal, bob):
+    """Two-segment legs: the thigh rotates at the hip, the shin at the knee, and the boot hangs from the
+    ankle (flat while planted, tipped with the shin when it kicks up). Every piece is rigid."""
+    hip_y, knee_y, ankle_y = leg_geometry(bottom)
+    f = facing or 1
+    out = []
+    for side in (-1, 1):
+        phase = i if side > 0 else i + 4
+        if kind == "side":
+            shade = FAR_LEG_SHADE if side < 0 else 1.0
+            pts = {pt: (int(c[0] * shade), int(c[1] * shade), int(c[2] * shade), c[3])
+                   for pt, c in ((pt, colour[pt]) for pt, lab in labels.items() if lab == "leg")}
+        else:
+            pts = {pt: colour[pt] for pt, lab in labels.items()
+                   if lab == "leg" and (pt[0] < split_x[pt[1]]) == (side < 0)}
+        if not pts:
+            continue
+        hx = sum(x for x, y in pts) / len(pts)
+        a1, a2 = leg_pose(phase, diagonal)
+        thigh = {q: c for q, c in pts.items() if q[1] < knee_y}
+        shin = {q: c for q, c in pts.items() if knee_y <= q[1] < ankle_y}
+        boot = {q: c for q, c in pts.items() if q[1] >= ankle_y}
+        planted = (phase % 8) in STYLE["stance"]
+        knee = (hx + (knee_y - hip_y) * math.sin(f * a1), hip_y + bob + (knee_y - hip_y) * math.cos(a1))
+        ankle = (knee[0] + (ankle_y - knee_y) * math.sin(f * (a1 + a2)),
+                 knee[1] + (ankle_y - knee_y) * math.cos(a1 + a2))
+        layer = {}
+        layer.update(transform(thigh, (hx, hip_y), f * a1, 1.0, (0, bob)))
+        layer.update(transform(shin, (hx, knee_y), f * (a1 + a2), 1.0, (knee[0] - hx, knee[1] - knee_y)))
+        boot_angle = 0.0 if planted else f * (a1 + a2) * 0.7
+        placed_boot = transform(boot, (hx, ankle_y), boot_angle, 1.0, (ankle[0] - hx, ankle[1] - ankle_y))
+        layer.update(placed_boot)
+        # Nothing on a leg may go below the ground line: lift the whole leg (rigidly) by any overflow.
+        overflow = max(y for x, y in layer) - bottom
+        if overflow > 0:
+            layer = {(x, y - overflow): c for (x, y), c in layer.items()}
+            placed_boot = {(x, y - overflow): c for (x, y), c in placed_boot.items()}
+        LAST_BOOTS.append(set(placed_boot))
+        out.append((side, layer))
+    out.sort(key=lambda l: l[0])  # side views: far (shaded) leg first, near leg on top
+    return [layer for _, layer in out]
+
+
 def frame(base, direction, i):
     kind, facing = VIEW[direction]
     parts = PARTS[direction]
@@ -230,11 +304,14 @@ def frame(base, direction, i):
     labels = split(base, parts)
     colour = {pt: px[pt[0], pt[1]] for pt in labels}
     cx, bottom = feet_centre(base)
+    posed = bool(STYLE.get("poses")) and (kind == "side" or diagonal)
+    bob = body_drop(i, bottom, diagonal) if posed else STYLE["bob"][i]
+    prev_bob = body_drop((i - 1) % 8, bottom, diagonal) if posed else STYLE["bob"][i - 1]
     layers = []  # list of dicts {(x, y): rgba}, drawn in order
 
     # Underlayer: the cloth's resting shape, 30% darker, drawn first. When the tunic flap or cloak tail
     # sways away, this shows as the shaded fabric/pants behind it instead of an empty space.
-    layers.append({(x, y + STYLE["bob"][i]): (int(c[0] * 0.7), int(c[1] * 0.7), int(c[2] * 0.7), c[3])
+    layers.append({(x, y + bob): (int(c[0] * 0.7), int(c[1] * 0.7), int(c[2] * 0.7), c[3])
                    for (x, y), c in ((pt, colour[pt]) for pt, lab in labels.items() if lab == "cloak")})
 
     # Legs. The boot is never rotated or cropped: it slides as one upright block (sole flat on the ground
@@ -269,8 +346,12 @@ def frame(base, direction, i):
             best = run
         split_x[y] = (best[0] + best[-1] + 1) / 2 if best and min(xs, default=here) < best[0] and max(xs, default=here) > best[-1] else cx
     LAST_BOOTS.clear()
-    legs = []
-    for side in (-1, 1):
+    if posed:
+        layers.extend(posed_legs(labels, colour, i, cx, bottom, split_x, kind, facing, diagonal, bob))
+        legs = None
+    else:
+        legs = []
+    for side in ((-1, 1) if legs is not None else ()):
         if kind == "side":
             shade = FAR_LEG_SHADE if side < 0 else 1.0
             pts = {pt: (int(c[0] * shade), int(c[1] * shade), int(c[2] * shade), c[3])
@@ -286,7 +367,7 @@ def frame(base, direction, i):
         layer = {}
         # The planted leg stays on the ground. A swinging leg lifts as one piece (its top tucks under the
         # body), together with the body bob, so no row is ever stretched or skipped.
-        dy = min(0, STYLE["bob"][i]) - up if swinging > 0 else 0  # a foot never goes below the ground line
+        dy = min(0, bob) - up if swinging > 0 else 0  # a foot never goes below the ground line
         if i in STYLE["airborne"] and swinging == 0:
             dy = -1  # flight: the trailing foot has left the ground too
         boot = set()
@@ -297,22 +378,23 @@ def frame(base, direction, i):
                 boot.add((x + reach, y + dy))
         LAST_BOOTS.append(boot)
         legs.append((side, swinging, layer))
-    if kind == "side":
-        legs.sort(key=lambda l: l[0])  # far (shaded) leg first, near leg on top
-    else:
-        legs.sort(key=lambda l: l[1])  # standing leg first, stepping leg over it
-    layers.extend(layer for _, _, layer in legs)
+    if legs is not None:
+        if kind == "side":
+            legs.sort(key=lambda l: l[0])  # far (shaded) leg first, near leg on top
+        else:
+            legs.sort(key=lambda l: l[1])  # standing leg first, stepping leg over it
+        layers.extend(layer for _, _, layer in legs)
 
     # Body (torso, head, hair): rigid, with the bob. In side views the top two rows of hair trail
     # 1 px behind on the rising frames; the head keeps its size.
-    rising = STYLE["bob"][i] < STYLE["bob"][i - 1]
+    rising = bob < prev_bob
     top = min(y for (x, y), lab in labels.items() if lab == "body")
     body = {}
     for (x, y), lab in labels.items():
         if lab != "body":
             continue
         dx = -facing if (kind == "side" and rising and y <= top + 1) else 0
-        body[(x + dx, y + STYLE["bob"][i])] = colour[(x, y)]
+        body[(x + dx, y + bob)] = colour[(x, y)]
     # Where an arm moved off the body, show the torso/sleeve behind it: the arm's own pixel, 35% darker.
     # Only inside the body's outline: between the leftmost and rightmost non-arm pixel of that row.
     span = {}
@@ -321,9 +403,9 @@ def frame(base, direction, i):
             lo, hi = span.get(y, (x, x))
             span[y] = (min(lo, x), max(hi, x))
     for (x, y), lab in labels.items():
-        if not isinstance(lab, tuple) or y not in span:
+        if not isinstance(lab, tuple) or lab[0] != "arm" or y not in span:  # arms only, never the sword
             continue
-        spot = (x, y + STYLE["bob"][i])
+        spot = (x, y + bob)
         if spot not in body and span[y][0] <= x <= span[y][1]:
             r_, g_, b_, a_ = colour[(x, y)]
             body[spot] = (int(r_ * 0.65), int(g_ * 0.65), int(b_ * 0.65), a_)
@@ -341,7 +423,7 @@ def frame(base, direction, i):
         else:
             amp = (1.5 if kind == "back" else 1.0) * STYLE["cloak_sway"]
             dx = round(amp * math.sin(p - 0.8) * t)
-        dy = STYLE["bob"][i] - (1 if (kind == "side" and STYLE["bob"][i] < 0 and t > 0.6) else 0)
+        dy = bob - (1 if (kind == "side" and bob < 0 and t > 0.6) else 0)
         # Cloth stretches: cover every pixel between where it was and where it moved, so no gap opens.
         step = 1 if dx >= 0 else -1
         for k in range(0, dx + step, step) if dx else (0,):
@@ -362,8 +444,8 @@ def frame(base, direction, i):
             angle = math.radians(deg) * fwd * (facing if diagonal else outward)
         pts = {pt: colour[pt] for pt, lab in labels.items() if lab == ("arm", a)}
         blade = {pt: colour[pt] for pt, lab in labels.items() if lab == ("sword", a)}
-        layers.append(transform(pts, arm["pivot"], angle, scale, (0, STYLE["bob"][i])))
-        layers.append(transform(blade, arm["pivot"], angle, scale, (0, STYLE["bob"][i])))
+        layers.append(transform(pts, arm["pivot"], angle, scale, (0, bob)))
+        layers.append(transform(blade, arm["pivot"], angle, scale, (0, bob)))
 
     # Forward lean: the whole upper body (cloth underlayer, torso, head, cloak, arms, sword) tilts as one
     # rigid piece about the hip, so nothing in it stretches. Full lean from the side, half on diagonals;
@@ -374,10 +456,17 @@ def frame(base, direction, i):
         upper = {}
         for layer in rest:
             upper.update(layer)
-        hip = (round(cx), HIP + STYLE["bob"][i])
-        angle = -(facing or 1) * math.radians(lean)  # negative tips the top toward +x when facing right
+        hip = (round(cx), HIP + bob)
+        # Lean as far as allowed, easing off a degree at a time if the tilt would swing the low-hanging
+        # sword tip below the ground line (clipping it would be a cut-off).
+        while True:
+            angle = -(facing or 1) * math.radians(lean)  # negative tips the top toward +x when facing right
+            leaned = transform(upper, hip, angle, 1.0, (0, 0))
+            if lean <= 0 or max(y for x, y in leaned) <= bottom:
+                break
+            lean -= 1
         # the cloth underlayer leans too but stays beneath the legs
-        layers = [transform(under, hip, angle, 1.0, (0, 0))] + legs_layers + [transform(upper, hip, angle, 1.0, (0, 0))]
+        layers = [transform(under, hip, angle, 1.0, (0, 0))] + legs_layers + [leaned]
 
     out = Image.new("RGBA", base.size, (0, 0, 0, 0))
     dst = out.load()
@@ -450,7 +539,10 @@ def fill_from_neighbours(im, spots):
                 if 0 <= x + dx < w and 0 <= y + dy < h and px[x + dx, y + dy][3]]
         if not near:  # no direct neighbour yet: it fills on a later pass as the gap closes inward
             continue
-        px[x, y] = max(set(near), key=near.count)
+        # A closed gap reads as a fold or shadow: use the darkest neighbour that isn't the blade
+        # (copying the most common neighbour painted bright skin strips along swinging arms).
+        cloth = [c for c in near if not steel(c)] or near
+        px[x, y] = min(cloth, key=lum)
 
 
 KNEE = HIP + 6  # rows from here down are left open between the legs
@@ -474,17 +566,21 @@ def interior_gaps(im):
             # Pixels touching the sword blade are skipped so the blade never gets glued to the body.
             if not touching or any(steel(c) for c in touching):
                 continue
-            reach = range(1, INTERIOR_REACH + 1)
-            # The open space between the hanging sword and the body is real; leave it see-through.
-            if any(0 <= q[0] < w and 0 <= q[1] < h and px[q][3] and steel(px[q])
-                   for k in reach for q in ((x - k, y), (x + k, y), (x, y - k), (x, y + k))):
+            def first(dx, dy):  # the first character pixel within reach in one direction, or None
+                for k in range(1, INTERIOR_REACH + 1):
+                    q = (x + dx * k, y + dy * k)
+                    if not (0 <= q[0] < w and 0 <= q[1] < h):
+                        return None
+                    if px[q][3]:
+                        return px[q]
+                return None
+            left, right, above, below = first(-1, 0), first(1, 0), first(0, -1), first(0, 1)
+            # The open space between the hanging sword and the body is real: leave a gap see-through when
+            # the first thing across it is the blade.
+            if any(c is not None and steel(c) for c in (left, right, above, below)):
                 continue
-            left = any(x - k >= 0 and px[x - k, y][3] for k in reach)
-            right = any(x + k < w and px[x + k, y][3] for k in reach)
-            above = any(y - k >= 0 and px[x, y - k][3] for k in reach)
-            below = any(y + k < h and px[x, y + k][3] for k in reach)
             # Closed in on both sides, or above and below: a slit cut into the character, however long.
-            if (left and right and (above or below)) or (above and below and (left or right)):
+            if ((left and right and (above or below)) or (above and below and (left or right))):
                 out.append((x, y))
     return out
 
