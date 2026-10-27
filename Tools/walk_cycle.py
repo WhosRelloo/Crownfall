@@ -9,7 +9,8 @@ hand-placed regions (PARTS, measured on 8x gridded views of each base pose) and 
          front/back lift the stepping leg
   arms   swing opposite the legs, rotating about the shoulder (10 degrees on the sides, 5-7 elsewhere)
   sword  rides with the hand that holds it
-  cloak  the tunic flap / cloak tail sways a step behind the hips; on the sides it trails behind
+  cloak  the tunic flap / cloak tail sways a step behind the hips; on the sides it trails behind;
+         a darker copy of its resting shape sits underneath so a sway never opens an empty space
   hair   the top two rows trail 1 px behind on the sides as the body rises
   body   bobs 1 px on the passing frames
 Every body part moves rigidly (translate/rotate only), so proportions never change; only cloth bends.
@@ -171,6 +172,11 @@ def frame(base, direction, i):
     colour = {pt: px[pt[0], pt[1]] for pt in labels}
     cx, bottom = feet_centre(base)
     layers = []  # list of dicts {(x, y): rgba}, drawn in order
+
+    # Underlayer: the cloth's resting shape, 30% darker, drawn first. When the tunic flap or cloak tail
+    # sways away, this shows as the shaded fabric/pants behind it instead of an empty space.
+    layers.append({(x, y + BOB[i]): (int(c[0] * 0.7), int(c[1] * 0.7), int(c[2] * 0.7), c[3])
+                   for (x, y), c in ((pt, colour[pt]) for pt, lab in labels.items() if lab == "cloak")})
 
     # Legs: each leg is a rigid piece. Side views swing the legs front-to-back in opposite phase, so they
     # pass each other on frames 3 and 7 (a real walk, not a scissor). Front/back views lift the stepping
