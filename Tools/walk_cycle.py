@@ -5,7 +5,8 @@ python Tools/walk_cycle.py <src_dir> <out.png> [--prefix cf_human_m_full_rags_wa
 Reads <prefix>_<LABEL>_frame01.png for each direction, using LABEL_FOR to pick the file that really
 shows each direction (the walk_v2 upload's labels were shifted). The figure is split into parts with
 hand-placed regions (PARTS, measured on 8x gridded views of each base pose) and each part moves:
-  legs   alternate: sides swing each leg front-to-back so they cross; front/back lift the stepping leg
+  legs   alternate: sides swing two whole legs (far one shaded) front-to-back so they cross;
+         front/back lift the stepping leg
   arms   swing opposite the legs, rotating about the shoulder (10 degrees on the sides, 5-7 elsewhere)
   sword  rides with the hand that holds it
   cloak  the tunic flap / cloak tail sways a step behind the hips; on the sides it trails behind
@@ -183,7 +184,14 @@ def frame(base, direction, i):
     hip_pivot = (cx, HIP - 2)
     legs = []
     for side in (-1, 1):
-        pts = {pt: colour[pt] for pt, lab in labels.items() if lab == "leg" and (pt[0] < cx) == (side < 0)}
+        if kind == "side":
+            # From the side both legs overlap into one drawn leg, so splitting it would leave two half
+            # legs with sliced boots. Use the whole leg twice: the far leg (side -1) shaded 30% darker.
+            shade = 0.7 if side < 0 else 1.0
+            pts = {pt: (int(c[0] * shade), int(c[1] * shade), int(c[2] * shade), c[3])
+                   for pt, c in ((pt, colour[pt]) for pt, lab in labels.items() if lab == "leg")}
+        else:
+            pts = {pt: colour[pt] for pt, lab in labels.items() if lab == "leg" and (pt[0] < cx) == (side < 0)}
         # Forward is the way the character faces on screen (+x when facing right).
         angle = math.radians(stride_deg) * math.cos(p) * side * (facing or 1)
         if stride_deg:
@@ -193,8 +201,9 @@ def frame(base, direction, i):
         # The standing leg stays planted; the swinging leg rises with the body and lifts its foot.
         dy = BOB[i] - round(lift * swinging) if swinging > 0 else 0
         legs.append((swinging, transform(pts, hip_pivot, angle, 1.0, (0, dy))))
-    legs.sort(key=lambda l: l[0])  # standing leg first, swinging leg drawn over it as it passes
-    layers.extend(layer for _, layer in legs)
+    if kind != "side":
+        legs.sort(key=lambda l: l[0])  # standing leg first, swinging leg drawn over it as it passes
+    layers.extend(layer for _, layer in legs)  # side views: far (shaded) leg first, near leg on top
 
     # Body (torso, head, hair): rigid, with the bob. In side views the top two rows of hair trail
     # 1 px behind on the rising frames; the head keeps its size.
@@ -331,6 +340,7 @@ def fill_from_neighbours(im, spots):
         px[x, y] = max(set(near), key=near.count)
 
 
+KNEE = HIP + 6  # rows from here down are left open between the legs
 INTERIOR_REACH = 4  # px: a gap with character pixels this close on all four sides counts as inside
 
 
@@ -341,7 +351,7 @@ def interior_gaps(im):
     px = im.load()
     w, h = im.size
     out = []
-    for y in range(h):
+    for y in range(min(h, KNEE)):  # below the knees the space between the feet is real, not a gap
         for x in range(w):
             if px[x, y][3]:
                 continue
@@ -383,14 +393,10 @@ def cleanup(im):
         fill_from_neighbours(im, notches(im))
     for _ in range(2):  # the hip band, where the legs separate from the body, gets two more passes
         fill_from_neighbours(im, [(x, y) for x, y in notches(im) if HIP - 4 <= y < HIP + 8])
-    for _ in range(20):
-        spots = holes(im)
-        if not spots:
-            break
-        fill_from_neighbours(im, spots)
-    # Last: close every remaining empty space inside the outline, so the character reads as solid.
-    for _ in range(INTERIOR_REACH * 2):
-        spots = interior_gaps(im)
+    # Then close enclosed specks and every empty space inside the outline (so the character reads as
+    # solid), repeating both until nothing changes: filling one can leave a small remnant of the other.
+    for _ in range(30):
+        spots = holes(im) + interior_gaps(im)
         if not spots:
             break
         fill_from_neighbours(im, spots)
