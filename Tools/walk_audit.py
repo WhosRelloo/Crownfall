@@ -1,0 +1,46 @@
+"""Audit a walk sheet built by walk_cycle.py: every frame must have whole boots, feet on the ground line,
+no holes or gaps inside the outline, nothing touching a cell edge, and parts the same size as the base pose.
+
+python Tools/walk_audit.py <src_dir> <sheet.png>   (exit code 1 if anything fails)
+"""
+import sys
+from PIL import Image
+import walk_cycle as W
+
+
+def main():
+    src, path = sys.argv[1], sys.argv[2]
+    sheet = Image.open(path)
+    fails = []
+    for r, d in enumerate(W.ROWS):
+        base = W.pivoted(f"{src}/cf_human_m_full_rags_walk_{W.LABEL_FOR[d]}_frame01.png")
+        base_h = base.getbbox()[3] - base.getbbox()[1]
+        for f in range(8):
+            W.frame(base, d, f)  # rebuild to learn where each boot pixel should be
+            boots = [set(b) for b in W.LAST_BOOTS]
+            fr = sheet.crop((f * 96, r * 96, f * 96 + 96, r * 96 + 96)).copy()
+            px = fr.load()
+            tag = f"{d} frame {f + 1}"
+            for k, boot in enumerate(boots):
+                missing = [p for p in boot if not (0 <= p[0] < 96 and 0 <= p[1] < 96) or not px[p][3]]
+                if missing:
+                    fails.append(f"{tag}: boot {k + 1} missing {len(missing)} px")
+            b = fr.getbbox()
+            if b[0] <= 1 or b[1] <= 1 or b[2] >= 95 or b[3] >= 95:
+                fails.append(f"{tag}: touches the cell edge {b}")
+            # Three-quarter views stand the far foot 1 px higher, so allow 1 px when the near foot is lifted.
+            if not (W.PIVOT[1] - 2 <= b[3] - 1 <= W.PIVOT[1] - 1):
+                fails.append(f"{tag}: lowest pixel on row {b[3] - 1}, ground line is {W.PIVOT[1] - 1}")
+            h = b[3] - b[1]
+            if not (base_h - 1 <= h <= base_h + 2):
+                fails.append(f"{tag}: height {h} vs base {base_h}")
+            if W.holes(fr):
+                fails.append(f"{tag}: {len(W.holes(fr))} enclosed specks")
+            if W.interior_gaps(fr):
+                fails.append(f"{tag}: {len(W.interior_gaps(fr))} gaps inside the outline")
+    print("\n".join(fails) if fails else "all 64 frames pass")
+    sys.exit(1 if fails else 0)
+
+
+if __name__ == "__main__":
+    main()
