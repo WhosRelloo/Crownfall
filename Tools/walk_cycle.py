@@ -5,7 +5,7 @@ python Tools/walk_cycle.py <src_dir> <out.png> [--prefix cf_human_m_full_rags_wa
 Reads <prefix>_<LABEL>_frame01.png for each direction, using LABEL_FOR to pick the file that really
 shows each direction (the walk_v2 upload's labels were shifted). The figure is split into parts with
 hand-placed regions (PARTS, measured on 8x gridded views of each base pose) and each part moves:
-  legs   alternate: front/back lift the stepping leg, sides rotate each leg about the hip
+  legs   alternate: sides swing each leg front-to-back so they cross; front/back lift the stepping leg
   arms   swing opposite the legs, rotating about the shoulder (10 degrees on the sides, 5-7 elsewhere)
   sword  rides with the hand that holds it
   cloak  the tunic flap / cloak tail sways a step behind the hips; on the sides it trails behind
@@ -170,19 +170,30 @@ def frame(base, direction, i):
     cx, bottom = feet_centre(base)
     layers = []  # list of dicts {(x, y): rgba}, drawn in order
 
-    # Legs: each leg is a rigid piece. Front/back views lift the stepping leg straight up (its top tucks
-    # under the tunic); side views rotate each leg about the hip. Nothing is stretched or squashed.
-    lift, stride_deg = (2, 0.0) if kind in ("front", "back") else (0, 11.0)
-    if diagonal:
-        lift, stride_deg = 1, 6.0
+    # Legs: each leg is a rigid piece. Side views swing the legs front-to-back in opposite phase, so they
+    # pass each other on frames 3 and 7 (a real walk, not a scissor). Front/back views lift the stepping
+    # leg straight up (its top tucks under the tunic). Diagonals blend both. Nothing is stretched.
+    if kind == "side":
+        lift, stride_deg = 1, 16.0
+    elif diagonal:
+        lift, stride_deg = 1, 9.0
+    else:
+        lift, stride_deg = 2, 0.0
     hip_pivot = (cx, HIP - 2)
+    legs = []
     for side in (-1, 1):
-        swing = math.sin(p) * side  # +1: this leg is stepping
         pts = {pt: colour[pt] for pt, lab in labels.items() if lab == "leg" and (pt[0] < cx) == (side < 0)}
-        angle = math.radians(stride_deg) * abs(math.cos(p)) * side  # each half opens outward from the hip
-        # The planted leg stays on the ground; the stepping leg rises with the body and lifts.
-        dy = BOB[i] - round(lift * swing) if swing > 0 else 0
-        layers.append(transform(pts, hip_pivot, angle, 1.0, (0, dy)))
+        # Forward is the way the character faces on screen (+x when facing right).
+        angle = math.radians(stride_deg) * math.cos(p) * side * (facing or 1)
+        if stride_deg:
+            swinging = max(0.0, -side * math.sin(p))  # this leg is moving forward through the air
+        else:
+            swinging = max(0.0, side * math.sin(p))
+        # The standing leg stays planted; the swinging leg rises with the body and lifts its foot.
+        dy = BOB[i] - round(lift * swinging) if swinging > 0 else 0
+        legs.append((swinging, transform(pts, hip_pivot, angle, 1.0, (0, dy))))
+    legs.sort(key=lambda l: l[0])  # standing leg first, swinging leg drawn over it as it passes
+    layers.extend(layer for _, layer in legs)
 
     # Body (torso, head, hair): rigid, with the bob. In side views the top two rows of hair trail
     # 1 px behind on the rising frames; the head keeps its size.
@@ -235,7 +246,7 @@ def frame(base, direction, i):
         # Rigid swing about the shoulder: no stretching, so the arm keeps its length.
         scale = 1.0
         if kind == "side":
-            angle = facing * math.radians(10) * math.cos(p)
+            angle = -facing * math.radians(10) * math.cos(p)  # counter-swing: back while the leading leg is forward
         else:
             fwd = math.sin(p) * arm["phase"]
             outward = -1 if arm["pivot"][0] < cx else 1  # which side of the body this arm hangs on
