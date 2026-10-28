@@ -23,6 +23,8 @@ hard alpha.
 """
 import argparse
 import math
+
+import numpy as np
 from PIL import Image
 
 ROWS = ["S", "SW", "W", "NW", "N", "NE", "E", "SE"]
@@ -205,23 +207,56 @@ def split(base, parts):
     return labels
 
 
+def scale2x(img):
+    """EPX / Scale2x on an (h, w) array of packed RGBA ints: doubles size, keeps pixel-art edges crisp."""
+    p = img
+    a = np.pad(p, ((1, 0), (0, 0)), mode="edge")[:-1]   # above
+    d = np.pad(p, ((0, 1), (0, 0)), mode="edge")[1:]    # below
+    c = np.pad(p, ((0, 0), (1, 0)), mode="edge")[:, :-1]  # left
+    b = np.pad(p, ((0, 0), (0, 1)), mode="edge")[:, 1:]   # right
+    e0 = np.where((c == a) & (c != d) & (a != b), c, p)
+    e1 = np.where((a == b) & (a != c) & (b != d), a, p)
+    e2 = np.where((d == c) & (d != b) & (c != a), d, p)
+    e3 = np.where((b == d) & (b != a) & (d != c), b, p)
+    out = np.empty((p.shape[0] * 2, p.shape[1] * 2), dtype=p.dtype)
+    out[0::2, 0::2], out[0::2, 1::2], out[1::2, 0::2], out[1::2, 1::2] = e0, e1, e2, e3
+    return out
+
+
 def transform(points, pivot, angle, scale_y, shift):
-    """Inverse-map a set of pixels through rotate(angle) * scale(1, scale_y) about pivot, then shift."""
+    """Move a set of pixels: rotate(angle) * scale(1, scale_y) about pivot, then shift.
+    Pure moves copy pixels exactly. Rotations use RotSprite (Scale2x three times to 8x, rotate, sample
+    each target pixel's centre), so rotated pixel art keeps clean edges with no dropped or doubled pixels."""
     if not points:
         return {}
-    c, s = math.cos(angle), math.sin(angle)
-    xs = [p[0] for p in points]
-    ys = [p[1] for p in points]
+    if abs(angle) < 1e-6 and scale_y == 1.0:
+        sx_, sy_ = round(shift[0]), round(shift[1])
+        return {(x + sx_, y + sy_): c for (x, y), c in points.items()}
+    xs = [q[0] for q in points]
+    ys = [q[1] for q in points]
+    x0, y0 = min(xs) - 1, min(ys) - 1
+    w, h = max(xs) - x0 + 2, max(ys) - y0 + 2
+    packed = np.zeros((h, w), dtype=np.uint32)
+    for (x, y), c in points.items():
+        packed[y - y0, x - x0] = (c[0] << 24) | (c[1] << 16) | (c[2] << 8) | c[3]
+    big = scale2x(scale2x(scale2x(packed)))  # 8x
     pad = 24  # room for a rotated sword tip or a kicked-up shin
+    gx, gy = np.meshgrid(np.arange(min(xs) - pad, max(xs) + pad + 1), np.arange(min(ys) - pad, max(ys) + pad + 1))
+    c_, s_ = math.cos(angle), math.sin(angle)
+    vx = gx - shift[0] - pivot[0]
+    vy = gy - shift[1] - pivot[1]
+    rx, ry = vx * c_ - vy * s_, vx * s_ + vy * c_  # inverse rotation
+    sx = pivot[0] + rx
+    sy = pivot[1] + ry / scale_y
+    bx = np.floor((sx - x0 + 0.5) * 8).astype(int)
+    by = np.floor((sy - y0 + 0.5) * 8).astype(int)
+    inside = (bx >= 0) & (by >= 0) & (bx < w * 8) & (by < h * 8)
     out = {}
-    for dy in range(min(ys) - pad, max(ys) + pad + 1):
-        for dx in range(min(xs) - pad, max(xs) + pad + 1):
-            vx, vy = dx - shift[0] - pivot[0], dy - shift[1] - pivot[1]
-            # inverse rotation, then inverse scale
-            rx, ry = vx * c - vy * s, vx * s + vy * c
-            sx, sy = round(pivot[0] + rx), round(pivot[1] + ry / scale_y)
-            if (sx, sy) in points:
-                out[(dx, dy)] = points[(sx, sy)]
+    vals = np.zeros(gx.shape, dtype=np.uint32)
+    vals[inside] = big[by[inside], bx[inside]]
+    hit = inside & ((vals & 0xFF) > 0)
+    for X, Y, v in zip(gx[hit].tolist(), gy[hit].tolist(), vals[hit].tolist()):
+        out[(X, Y)] = ((v >> 24) & 0xFF, (v >> 16) & 0xFF, (v >> 8) & 0xFF, v & 0xFF)
     return out
 
 
@@ -271,8 +306,9 @@ def posed_legs(labels, colour, i, cx, bottom, split_x, kind, facing, diagonal, b
             continue
         hx = sum(x for x, y in pts) / len(pts)
         a1, a2 = leg_pose(phase, diagonal)
-        thigh = {q: c for q, c in pts.items() if q[1] < knee_y}
-        shin = {q: c for q, c in pts.items() if knee_y <= q[1] < ankle_y}
+        # Segments overlap by 2 rows at each joint, so the knee and ankle never open a seam.
+        thigh = {q: c for q, c in pts.items() if q[1] < knee_y + 2}
+        shin = {q: c for q, c in pts.items() if knee_y - 1 <= q[1] < ankle_y + 1}
         boot = {q: c for q, c in pts.items() if q[1] >= ankle_y}
         planted = (phase % 8) in STYLE["stance"]
         knee = (hx + (knee_y - hip_y) * math.sin(f * a1), hip_y + bob + (knee_y - hip_y) * math.cos(a1))
@@ -395,20 +431,28 @@ def frame(base, direction, i):
             continue
         dx = -facing if (kind == "side" and rising and y <= top + 1) else 0
         body[(x + dx, y + bob)] = colour[(x, y)]
-    # Where an arm moved off the body, show the torso/sleeve behind it: the arm's own pixel, 35% darker.
+    # Where an arm moved off the body, show shadowed torso behind it: a flat shadow tone taken from the
+    # torso on that row (its darker cloth, a quarter of the way up from the darkest). A copy of the arm
+    # itself would leave a ghost second arm behind the swinging one.
     # Only inside the body's outline: between the leftmost and rightmost non-arm pixel of that row.
     span = {}
+    row_cloth = {}
     for (x, y), lab in labels.items():
         if not isinstance(lab, tuple):
             lo, hi = span.get(y, (x, x))
             span[y] = (min(lo, x), max(hi, x))
+            if lab == "body":
+                row_cloth.setdefault(y, []).append(colour[(x, y)])
+    shadow = {}
+    for y, cols in row_cloth.items():
+        cols.sort(key=lum)
+        shadow[y] = cols[len(cols) // 4]
     for (x, y), lab in labels.items():
         if not isinstance(lab, tuple) or lab[0] != "arm" or y not in span:  # arms only, never the sword
             continue
         spot = (x, y + bob)
         if spot not in body and span[y][0] <= x <= span[y][1]:
-            r_, g_, b_, a_ = colour[(x, y)]
-            body[spot] = (int(r_ * 0.65), int(g_ * 0.65), int(b_ * 0.65), a_)
+            body[spot] = shadow.get(y) or shadow.get(y - 1) or colour[(x, y)]
     layers.append(body)
 
     # Cloak / tunic: sways behind the hips; on the sides it trails behind the walker.
@@ -467,6 +511,15 @@ def frame(base, direction, i):
             lean -= 1
         # the cloth underlayer leans too but stays beneath the legs
         layers = [transform(under, hip, angle, 1.0, (0, 0))] + legs_layers + [leaned]
+
+    # The darker cloth underlayer only fills gaps: drop any of it that sticks out past the outline of
+    # everything else on that row, where it would read as a ghost duplicate of the cloak.
+    span = {}
+    for layer in layers[1:]:
+        for (x, y) in layer:
+            lo, hi = span.get(y, (x, x))
+            span[y] = (min(lo, x), max(hi, x))
+    layers[0] = {(x, y): c for (x, y), c in layers[0].items() if y in span and span[y][0] <= x <= span[y][1]}
 
     out = Image.new("RGBA", base.size, (0, 0, 0, 0))
     dst = out.load()
@@ -586,8 +639,26 @@ def interior_gaps(im):
 
 
 def cleanup(im):
-    """Drop stray islands of STRAY_ISLAND pixels or fewer, then close every gap a moving part opened."""
+    """Trim hairline dashes, drop stray islands of STRAY_ISLAND pixels or fewer, then close every gap
+    a moving part opened."""
     px = im.load()
+    w, h = im.size
+    # Hairlines: pixels with nothing directly above or below are 1-px-high dashes left by stretched
+    # cloth; trim them (twice, so a 2-px dash goes too). The blade and anything touching it is kept:
+    # its diagonal pixels are rightly one pixel thick.
+    boots = set().union(*LAST_BOOTS) if LAST_BOOTS else set()  # a boot's toe or heel tip is kept too
+    for _ in range(2):
+        cut = []
+        for y in range(1, h - 1):
+            for x in range(1, w - 1):
+                c = px[x, y]
+                if not c[3] or px[x, y - 1][3] or px[x, y + 1][3] or steel(c) or (x, y) in boots:
+                    continue
+                if any(px[x + dx, y + dy][3] and steel(px[x + dx, y + dy]) for dx, dy in NEIGHBOURS):
+                    continue
+                cut.append((x, y))
+        for q in cut:
+            px[q] = (0, 0, 0, 0)
     w, h = im.size
     seen = set()
     for y in range(h):
