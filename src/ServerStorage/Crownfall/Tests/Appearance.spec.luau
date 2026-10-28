@@ -114,12 +114,13 @@ spec["recolour leaves unpainted classes alone and spans the ramp"] = function()
 	T.eq(r, math.round(ramp[1].R * 255), "darkest skin -> darkest stop")
 end
 
-spec["class maps decode to whole strips with known classes"] = function()
+spec["class maps (both bodies) decode to whole strips with known classes"] = function()
 	T.eq(buffer.len(ClassMap.Decode("a3c2", 5, 1)), 5)
 	local tiny = ClassMap.Decode("a3c2", 5, 1)
 	T.eq(buffer.readu8(tiny, 2), 0)
 	T.eq(buffer.readu8(tiny, 3), 2)
-	local maps = require(RS.Crownfall.Render.ClassMaps.humanm)
+	for _, rig in ipairs({ "humanm", "humanf" }) do
+	local maps = require(RS.Crownfall.Render.ClassMaps[rig])
 	for anim, strips in pairs(maps.Anims) do
 		local n = 0
 		for direction, text in pairs(strips) do
@@ -135,8 +136,10 @@ spec["class maps decode to whole strips with known classes"] = function()
 			end
 			T.truthy(painted > 2000, anim .. " " .. direction .. " has paintable pixels")
 		end
-		T.eq(n, 8, anim .. " has all 8 directions")
+		T.eq(n, 8, rig .. " " .. anim .. " has all 8 directions")
 	end
+	end
+	T.truthy(require(RS.Crownfall.Render.ClassMaps.humanf).Anims.idle, "the female idle has stored maps")
 end
 
 return spec

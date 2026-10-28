@@ -148,27 +148,28 @@ Before the opening cutscene, as the blueprint says.
 **Rebuilding the data**
 - After changing `Art/Sprites/palettes.json` or any walk/run/dodge art, run `python Tools/class_maps.py`.
 
-## 5. Female body: the art it needs
+## 5. Female body (drawn 2026-10-28)
 
-The female body plugs into the same system. Her colour options, presets and recolouring all work unchanged. To build her walk, sprint and dodge, `Tools/walk_cycle.py` needs the same inputs it used for the male:
+`Tools/female.py` draws the female starter from the male base poses, one per drawn direction: S, SW, W, NW and N. The east side is mirrored. Each change is a hand-placed pixel overlay. The male drawing is painted rather than palette-limited, so the overlays use a few hair tones with a little seeded variation, and shade by darkening or brightening the pixels already there.
 
-1. **Base poses: one standing drawing per direction for 5 directions (S, SW, W, NW, N).** The east side is mirrored from the west.
-   - **Size and scale:** 96 × 96 px PNG, transparent background, hard edges (no soft or half-transparent pixels), with feet at the bottom centre and the same scale as the male (about 60 px tall).
-   - **Pose:** the same as the male's walk frame 1:
-     - sword in the same hand, hanging at the side;
-     - arms a little away from the torso;
-     - feet slightly apart;
-     - hair clear of the shoulders where possible, so it can be recoloured cleanly.
-   - **Outfit and colours:** the same rags outfit, in the same dark-brown cloth, tan skin, dark hair and brown leather family as the male. Recolouring keys off these colour families.
-   - Named like the male zip, e.g. `cf_human_f_full_rags_walk_S_frame01.png`. Only frame 1 is needed; the tool animates the rest.
-2. **Idle sheet:** 8 directions × 4 frames, 96 px cells, laid out like the male idle (768 × 384, 2 directions per row). Hard edges.
+What makes her read as female at 64 px:
 
-When those arrive:
-1. I map her parts (arms, sword, cloak, hair line) for each direction.
-2. I build MWalk / MRun / MDodge equivalents named FWalk, FRun and FDodge, run the same audits, and generate her class maps.
-3. You upload them and I add `Render/Art/humanf.luau`.
+| Direction | Changes |
+| --- | --- |
+| Front (S, SW) | Long hair falling over the shoulders and framing the face; lips; sloped shoulders; a waist pulled in 1 px; hips out 1 px |
+| Side (W) | Long hair down the back; lips in profile; a chest curve; a narrower waist; hips out |
+| Back (N, NW) | Long hair over the upper back, tapering to a point |
 
-The Female button unlocks by itself once that file exists.
+How she is built:
+- `walk_cycle.py --prefix cf_human_f_full_rags_walk` animates her idle (a new 8-frame breathing style), walk, sprint and dodge with the same motion as the male.
+- `female.hair_pixels` tells the class maps that the long hair is hair, so hair colours recolour all of it.
+- `python Tools/class_maps.py` rebuilds both bodies and checks each sheet against `Art/Sprites/<rig>`. `--write-female` rewrites hers after a deliberate art change.
+
+**Audits:** idle, walk, sprint and dodge each pass `walk_audit.py` on 64/64 frames. Every frame is one connected piece, and I reviewed all of them by eye.
+
+**Uploads:**
+- `Tools/export.py` writes FIdle, FWalk, FRun and FDodge to `Downloads/Crownfall`, as `FWalk (South).png` and so on.
+- Once those are uploaded, `Render/Art/humanf.luau` gets their IDs, and the Female button unlocks by itself.
 
 ## 6. Decisions needed from you
 

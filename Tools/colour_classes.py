@@ -29,8 +29,9 @@ def is_skin(c):
     return 0.02 <= h <= 0.11 and s > 0.35 and lum(c) > 70
 
 
-def classify(base, labels, hair_row, hip):
-    """base: pivoted RGBA drawing; labels: walk_cycle.split() output; returns {(x, y): class id}."""
+def classify(base, labels, hair_row, hip, extra_hair=frozenset()):
+    """base: pivoted RGBA drawing; labels: walk_cycle.split() output; extra_hair: pixels known to be hair below
+    the hair line (long hair); returns {(x, y): class id}."""
     px = base.load()
     bottom = max(y for (x, y) in labels)
     out = {}
@@ -42,7 +43,7 @@ def classify(base, labels, hair_row, hip):
             out[(x, y)] = OUTLINE
         elif is_skin(c) and (y < hair_row + SKIN_DEPTH or (isinstance(lab, tuple) and lab[0] == "arm")):
             out[(x, y)] = SKIN
-        elif y < hair_row + HAIR_DEPTH:
+        elif y < hair_row + HAIR_DEPTH or (x, y) in extra_hair:
             out[(x, y)] = HAIR
         elif y >= hip and y > bottom - BOOT_HEIGHT and hsv(c)[1] > 0.45:
             out[(x, y)] = BOOTS

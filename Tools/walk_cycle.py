@@ -26,6 +26,7 @@ import math
 
 import numpy as np
 import colour_classes
+import female
 from PIL import Image
 
 ROWS = ["S", "SW", "W", "NW", "N", "NE", "E", "SE"]
@@ -64,6 +65,17 @@ STYLES = {
         "cloak_sway": 2.5,
         "lean_deg": 14,
     },
+}
+STYLES["idle"] = {  # standing at rest: slow breathing (the chest rises a pixel), arms and cloth settle
+    "fps": 6,
+    "bob": [0, 0, -1, -1, -1, -1, 0, 0],
+    "airborne": [],
+    "stride": {"side": 0, "diagonal": 0, "front": 0},
+    "lift": {"side": 0, "diagonal": 0, "front": 0},
+    "arm_deg": {"side": 2, "diagonal": 2, "front": 1},
+    "cloak_trail": 0.3,
+    "cloak_sway": 0.5,
+    "lean_deg": 0,
 }
 STYLES["dodge"] = {  # a forward roll: crouch, dive, tuck and spin through a full turn, land, rise
     "fps": 20,
@@ -1001,7 +1013,9 @@ def base_for(direction):
     base = pivoted(f"{SRC['dir']}/{SRC['prefix']}_{LABEL_FOR[direction]}_frame01.png")
     if SRC.get("classes"):
         labels = split(base, PARTS[direction])
-        base = colour_classes.tag(base, colour_classes.classify(base, labels, PARTS[direction]["hair"], HIP))
+        # the female's long hair runs past the hair line: Tools/female.py knows which pixels it painted as hair
+        extra = female.hair_pixels(direction) if SRC["prefix"].startswith("cf_human_f") else set()
+        base = colour_classes.tag(base, colour_classes.classify(base, labels, PARTS[direction]["hair"], HIP, extra))
     return base
 
 

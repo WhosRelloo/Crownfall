@@ -1,7 +1,8 @@
 """Audit a walk sheet built by walk_cycle.py: every frame must have whole boots, feet on the ground line,
 no holes or gaps inside the outline, nothing touching a cell edge, and parts the same size as the base pose.
 
-python Tools/walk_audit.py <src_dir> <sheet.png> [walk|run]   (exit code 1 if anything fails)
+python Tools/walk_audit.py <src_dir> <sheet.png> [walk|run|dodge|idle] [prefix]   (exit code 1 if anything fails)
+prefix: the base-pose file prefix, cf_human_m_full_rags_walk (default) or cf_human_f_full_rags_walk
 """
 import sys
 from PIL import Image
@@ -12,13 +13,14 @@ def main():
     src, path = sys.argv[1], sys.argv[2]
     W.STYLE = W.STYLES[sys.argv[3] if len(sys.argv) > 3 else "walk"]
     W.SRC["dir"] = src
+    W.SRC["prefix"] = sys.argv[4] if len(sys.argv) > 4 else "cf_human_m_full_rags_walk"
     rolling = bool(W.STYLE.get("roll_seq"))  # a roll spins the body: boots and height can't be fixed checks
     lift_room = 3 if W.STYLE["airborne"] else 1  # flight frames lift both feet
     sheet = Image.open(path)
     fails = []
     for r, d in enumerate(W.ROWS):
         source = W.MIRROR.get(d, d)  # mirrored rows are checked against their flipped source
-        base = W.pivoted(f"{src}/cf_human_m_full_rags_walk_{W.LABEL_FOR[source]}_frame01.png")
+        base = W.pivoted(f"{src}/{W.SRC['prefix']}_{W.LABEL_FOR[source]}_frame01.png")
         base_h = base.getbbox()[3] - base.getbbox()[1]
         for f in range(8):
             W.frame(base, source, f)  # rebuild to learn where each boot pixel should be
