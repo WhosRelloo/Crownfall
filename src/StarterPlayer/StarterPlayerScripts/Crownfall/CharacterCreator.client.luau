@@ -317,13 +317,13 @@ local function build(firstTime: boolean)
 	end
 
 	-- Options (right)
-	local options = panel({ Parent = root, Position = UDim2.fromOffset(782, 84), Size = UDim2.fromOffset(338, 500) })
+	local options = panel({ Name = "Options", Parent = root, Position = UDim2.fromOffset(782, 84), Size = UDim2.fromOffset(338, 500) })
 	label({ Parent = options, Text = "BODY", Font = BOLD, TextSize = 13, TextColor3 = C.muted,
 		Position = UDim2.fromOffset(18, 14), Size = UDim2.fromOffset(120, 18) })
 	local bodyButtons = {}
 	for i, body in ipairs(Appearance.Bodies) do
 		local has = Arts.Has(body.Id)
-		local b = button({ Parent = options, Text = body.Name, TextSize = 16,
+		local b = button({ Name = "Body_" .. body.Id, Parent = options, Text = body.Name, TextSize = 16,
 			Position = UDim2.fromOffset(18 + (i - 1) * 154, 38), Size = UDim2.fromOffset(146, 40) })
 		if not has then
 			b.Active = false
