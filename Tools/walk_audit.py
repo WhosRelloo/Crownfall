@@ -23,6 +23,9 @@ def main():
             boots = [set(b) for b in W.LAST_BOOTS]
             if source != d:
                 boots = [{(2 * W.PIVOT[0] - x, y) for x, y in b} for b in boots]
+                flipped = {(2 * W.PIVOT[0] - x, y) for x, y in W.LAST_BLADE}
+                W.LAST_BLADE.clear()
+                W.LAST_BLADE.update(flipped)
             fr = sheet.crop((f * 96, r * 96, f * 96 + 96, r * 96 + 96)).copy()
             px = fr.load()
             tag = f"{d} frame {f + 1}"

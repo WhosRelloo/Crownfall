@@ -55,6 +55,10 @@ STYLES = {
         "flight_lift": 2,
         "diagonal_scale": 0.4,  # on a diagonal most of the swing points toward/away from the camera
         "arm_deg": {"side": 22, "diagonal": 14, "front": 10},
+        # Front/back views: the forearm (with hand and sword) pumps as a rigid piece. Toward the camera it
+        # rises "up" px and tucks over the upper arm (a bent arm driving forward, fist at chest height);
+        # away from the camera it rises "back_up" px, slides inward and goes behind the body.
+        "pump": {"up": 5, "back_up": 3, "tuck": 2},
         "cloak_trail": 4.0,
         "cloak_sway": 2.5,
         "lean_deg": 14,
@@ -64,6 +68,7 @@ STYLE = STYLES["walk"]
 CELL, PIVOT = 96, (48, 88)
 HIP = 66  # first leg row after pivoting
 BOOT_ROWS = 9  # bottom rows of each leg that make up the boot; moved as one block, never rotated
+LAST_BLADE = set()  # where the sword pixels landed in the last frame built (cleanup leaves gaps by it)
 LAST_BOOTS = []  # where each boot pixel landed in the last frame built (read by Tools/walk_audit.py)
 FAR_LEG_SHADE = 0.78  # side views: the far leg is this much darker than the near one
 
@@ -453,6 +458,7 @@ def frame(base, direction, i):
         spot = (x, y + bob)
         if spot not in body and span[y][0] <= x <= span[y][1]:
             body[spot] = shadow.get(y) or shadow.get(y - 1) or colour[(x, y)]
+    body_index = len(layers)
     layers.append(body)
 
     # Cloak / tunic: sways behind the hips; on the sides it trails behind the walker.
@@ -476,7 +482,35 @@ def frame(base, direction, i):
     layers.append(cloak)
 
     # Arms and swords.
+    behind = []  # arm pieces drawn behind the body (a run arm swung away from the camera)
+    blades = {}  # every sword pixel as placed this frame
     for a, arm in enumerate(parts["arms"]):
+        pts = {pt: colour[pt] for pt, lab in labels.items() if lab == ("arm", a)}
+        blade = {pt: colour[pt] for pt, lab in labels.items() if lab == ("sword", a)}
+        if STYLE.get("pump") and kind in ("front", "back") and not diagonal and pts:
+            # Two rigid pieces: the upper arm stays at the shoulder; the forearm, hand and sword move.
+            low = max(y for x, y in pts)
+            elbow = arm["pivot"][1] + (low - arm["pivot"][1]) * 0.45
+            upper = {q: c for q, c in pts.items() if q[1] < elbow}
+            fore = {q: c for q, c in pts.items() if q[1] >= elbow}
+            pump = math.sin(p) * arm["phase"]
+            toward = pump if kind == "front" else -pump  # > 0: this forearm comes toward the camera
+            inward = 1 if arm["pivot"][0] < cx else -1
+            P = STYLE["pump"]
+            if toward >= 0:
+                shift = (round(P["tuck"] * 0.75 * toward) * inward, bob - round(P["up"] * toward))
+            else:
+                shift = (round(P["tuck"] * -toward) * inward, bob - round(P["back_up"] * -toward))
+            pieces = [transform(upper, arm["pivot"], 0.0, 1.0, (0, bob)),
+                      transform(fore, arm["pivot"], 0.0, 1.0, shift),
+                      transform(blade, arm["pivot"], 0.0, 1.0, shift)]
+            blades.update(pieces[2])
+            if toward >= 0:
+                layers.extend(pieces)
+            else:
+                layers.append(pieces[0])
+                behind.extend(pieces[1:])
+            continue
         # Rigid swing about the shoulder: no stretching, so the arm keeps its length.
         scale = 1.0
         if kind == "side":
@@ -486,10 +520,11 @@ def frame(base, direction, i):
             outward = -1 if arm["pivot"][0] < cx else 1  # which side of the body this arm hangs on
             deg = STYLE["arm_deg"]["diagonal" if diagonal else "front"]
             angle = math.radians(deg) * fwd * (facing if diagonal else outward)
-        pts = {pt: colour[pt] for pt, lab in labels.items() if lab == ("arm", a)}
-        blade = {pt: colour[pt] for pt, lab in labels.items() if lab == ("sword", a)}
         layers.append(transform(pts, arm["pivot"], angle, scale, (0, bob)))
-        layers.append(transform(blade, arm["pivot"], angle, scale, (0, bob)))
+        placed = transform(blade, arm["pivot"], angle, scale, (0, bob))
+        blades.update(placed)
+        layers.append(placed)
+    layers[body_index:body_index] = behind  # swung-back forearms go behind the body
 
     # Forward lean: the whole upper body (cloth underlayer, torso, head, cloak, arms, sword) tilts as one
     # rigid piece about the hip, so nothing in it stretches. Full lean from the side, half on diagonals;
@@ -511,6 +546,7 @@ def frame(base, direction, i):
             lean -= 1
         # the cloth underlayer leans too but stays beneath the legs
         layers = [transform(under, hip, angle, 1.0, (0, 0))] + legs_layers + [leaned]
+        blades = transform(blades, hip, angle, 1.0, (0, 0))
 
     # The darker cloth underlayer only fills gaps: drop any of it that sticks out past the outline of
     # everything else on that row, where it would read as a ghost duplicate of the cloak.
@@ -520,6 +556,9 @@ def frame(base, direction, i):
             lo, hi = span.get(y, (x, x))
             span[y] = (min(lo, x), max(hi, x))
     layers[0] = {(x, y): c for (x, y), c in layers[0].items() if y in span and span[y][0] <= x <= span[y][1]}
+
+    LAST_BLADE.clear()
+    LAST_BLADE.update(blades)
 
     out = Image.new("RGBA", base.size, (0, 0, 0, 0))
     dst = out.load()
@@ -578,8 +617,8 @@ def notches(im):
         for x in range(1, w - 1):
             if px[x, y][3]:
                 continue
-            near = [px[x + dx, y + dy] for dx, dy in NEIGHBOURS if px[x + dx, y + dy][3]]
-            if len(near) >= 5 and not any(steel(c) for c in near):
+            near = [(x + dx, y + dy) for dx, dy in NEIGHBOURS if px[x + dx, y + dy][3]]
+            if len(near) >= 5 and not any(q in LAST_BLADE for q in near):
                 out.append((x, y))
     return out
 
@@ -588,13 +627,13 @@ def fill_from_neighbours(im, spots):
     px = im.load()
     w, h = im.size
     for x, y in spots:
-        near = [px[x + dx, y + dy] for dx, dy in NEIGHBOURS
+        near = [(x + dx, y + dy) for dx, dy in NEIGHBOURS
                 if 0 <= x + dx < w and 0 <= y + dy < h and px[x + dx, y + dy][3]]
         if not near:  # no direct neighbour yet: it fills on a later pass as the gap closes inward
             continue
         # A closed gap reads as a fold or shadow: use the darkest neighbour that isn't the blade
         # (copying the most common neighbour painted bright skin strips along swinging arms).
-        cloth = [c for c in near if not steel(c)] or near
+        cloth = [px[q] for q in near if q not in LAST_BLADE] or [px[q] for q in near]
         px[x, y] = min(cloth, key=lum)
 
 
@@ -613,11 +652,11 @@ def interior_gaps(im):
         for x in range(w):
             if px[x, y][3]:
                 continue
-            touching = [px[x + dx, y + dy] for dx, dy in NEIGHBOURS
+            touching = [(x + dx, y + dy) for dx, dy in NEIGHBOURS
                         if 0 <= x + dx < w and 0 <= y + dy < h and px[x + dx, y + dy][3]]
             # A cut touches the character; a pixel with nothing around it is open space, not a cut.
             # Pixels touching the sword blade are skipped so the blade never gets glued to the body.
-            if not touching or any(steel(c) for c in touching):
+            if not touching or any(q in LAST_BLADE for q in touching):
                 continue
             def first(dx, dy):  # the first character pixel within reach in one direction, or None
                 for k in range(1, INTERIOR_REACH + 1):
@@ -625,12 +664,12 @@ def interior_gaps(im):
                     if not (0 <= q[0] < w and 0 <= q[1] < h):
                         return None
                     if px[q][3]:
-                        return px[q]
+                        return q
                 return None
             left, right, above, below = first(-1, 0), first(1, 0), first(0, -1), first(0, 1)
             # The open space between the hanging sword and the body is real: leave a gap see-through when
-            # the first thing across it is the blade.
-            if any(c is not None and steel(c) for c in (left, right, above, below)):
+            # the first thing across it is the blade (known by position, not guessed from colour).
+            if any(q is not None and q in LAST_BLADE for q in (left, right, above, below)):
                 continue
             # Closed in on both sides, or above and below: a slit cut into the character, however long.
             if ((left and right and (above or below)) or (above and below and (left or right))):
@@ -652,9 +691,9 @@ def cleanup(im):
         for y in range(1, h - 1):
             for x in range(1, w - 1):
                 c = px[x, y]
-                if not c[3] or px[x, y - 1][3] or px[x, y + 1][3] or steel(c) or (x, y) in boots:
+                if not c[3] or px[x, y - 1][3] or px[x, y + 1][3] or (x, y) in LAST_BLADE or (x, y) in boots:
                     continue
-                if any(px[x + dx, y + dy][3] and steel(px[x + dx, y + dy]) for dx, dy in NEIGHBOURS):
+                if any((x + dx, y + dy) in LAST_BLADE for dx, dy in NEIGHBOURS):
                     continue
                 cut.append((x, y))
         for q in cut:
