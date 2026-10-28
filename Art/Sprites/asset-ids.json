@@ -57,15 +57,15 @@
    }
   },
   "walk": {
-   "note": "uploaded 2026-10-27 4:26 PM as 8 strips (768x96); the 'v29' walk. A cleaner walk is in Downloads/Crownfall/MWalk if re-uploaded.",
-   "S": 75803123635354,
-   "SW": 79061646861695,
-   "W": 90353021831165,
-   "NW": 101986689346199,
-   "N": 121560794536755,
-   "NE": 130912852757511,
-   "E": 137310282059088,
-   "SE": 91400436204682
+   "note": "uploaded 2026-10-27 5:31 PM as 8 strips (768x96); pixel counts match Art/Sprites/humanm/cf_humanm_full_rags_walk.png",
+   "S": 78627164929550,
+   "SW": 76736586081882,
+   "W": 89173701039656,
+   "NW": 140387225265342,
+   "N": 130937814930740,
+   "NE": 126049533991959,
+   "E": 110635237754967,
+   "SE": 82692421583733
   },
   "run": {
    "note": "uploaded 2026-10-27 5:18 PM as 8 strips (768x96); pixel counts match Art/Sprites/humanm/cf_humanm_full_rags_run.png",
