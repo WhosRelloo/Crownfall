@@ -37,6 +37,10 @@ Config.Movement = {
 	WalkSpeed = 8, -- studs/s
 	SprintSpeed = 18, -- studs/s while holding Sprint (Left Shift)
 	MovingSpeed = 1, -- below this the character counts as standing
+	DodgeDistance = 2.5, -- studs covered by a dodge roll
+	DodgeTime = 0.4, -- seconds (8 frames at 20 fps)
+	DodgeRecovery = 0.1, -- seconds after a roll before the next one
+	DodgeInvulnerable = { 1 / 20, 5 / 20 }, -- seconds into the roll: frames 2-5
 }
 
 Config.Render = {

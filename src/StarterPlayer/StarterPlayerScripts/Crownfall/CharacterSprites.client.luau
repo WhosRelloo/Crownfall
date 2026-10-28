@@ -88,14 +88,25 @@ RunService:BindToRenderStep("CrownfallSprites", Enum.RenderPriority.Camera.Value
 		end
 		local velocity = root.AssemblyLinearVelocity * Vector3.new(1, 0, 1)
 		local anim = SheetMath.AnimFor(velocity.Magnitude)
-		if anim ~= "idle" then
+		local frame
+		local dodgeStart = character:GetAttribute("DodgeStart")
+		local sinceDodge = dodgeStart and workspace:GetServerTimeNow() - dodgeStart
+		if art.Anims.dodge and sinceDodge and sinceDodge >= 0 and sinceDodge < Config.Movement.DodgeTime then
+			-- a dodge roll: timed on the server clock so every client shows the same frame
+			anim = "dodge"
+			t.direction = character:GetAttribute("DodgeDir") or t.direction
+			frame = SheetMath.FrameAt(art.Anims.dodge, sinceDodge)
+		elseif anim ~= "idle" then
 			t.direction = Facing.FromScreen(CameraMath.ToScreen(velocity))
 		end
 		if anim ~= t.anim then
 			t.anim, t.startedAt = anim, now
 		end
+		if character == Players.LocalPlayer.Character then
+			character:SetAttribute("Facing", t.direction) -- the dodge rolls this way when standing still
+		end
 		local def = art.Anims[anim] or art.Anims.idle
-		t.card:Show(t.direction, anim, SheetMath.FrameAt(def, now - t.startedAt))
+		t.card:Show(t.direction, anim, frame or SheetMath.FrameAt(def, now - t.startedAt))
 		local foot = root.Position - Vector3.new(0, humanoid.HipHeight + root.Size.Y / 2, 0)
 		t.card:Place(foot, camera.CFrame)
 	end

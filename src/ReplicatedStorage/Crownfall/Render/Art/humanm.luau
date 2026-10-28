@@ -49,6 +49,22 @@ return {
 				SE = "rbxassetid://87188108632950",
 			},
 		},
+		-- Uploaded 2026-10-27 6:47 PM; IDs matched to directions by pixel count and centre in Studio.
+		dodge = {
+			Frames = 8,
+			FPS = 20,
+			Mode = "Once",
+			Images = {
+				S = "rbxassetid://136076529892246",
+				SW = "rbxassetid://140550640499414",
+				W = "rbxassetid://90974670581621",
+				NW = "rbxassetid://102124577126013",
+				N = "rbxassetid://140511944308809",
+				NE = "rbxassetid://101463775209688",
+				E = "rbxassetid://132207485689053",
+				SE = "rbxassetid://133299446146726",
+			},
+		},
 	},
 	Layers = {
 		full = {
