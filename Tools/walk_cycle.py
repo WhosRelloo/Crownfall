@@ -64,6 +64,36 @@ STYLES = {
         "lean_deg": 14,
     },
 }
+STYLES["dodge"] = {  # a forward roll: crouch, dive, tuck and spin through a full turn, land, rise
+    "fps": 20,
+    # Side and diagonal views: per-frame leg poses (near leg, far leg) as (thigh, knee) degrees, upper-body
+    # lean, arm swing (+ = forward), whole-body roll, and height off the ground after landing it on the floor.
+    # Tuck frames (3-5): knees pulled to the chest and the head pushed down past them -> a tight ball.
+    "frame_poses": [((35, -70), (20, -60)), ((-35, -5), (50, -70)), ((110, -155), (100, -150)),
+                    ((110, -155), (100, -150)), ((110, -155), (100, -150)), ((70, -125), (80, -135)),
+                    ((30, -70), (15, -55)), ((10, -20), (0, -10))],
+    "lean_seq": [25, 50, 100, 100, 100, 70, 25, 8],
+    "arm_seq": [-25, 70, 110, 110, 110, 60, 10, -5],
+    "roll_seq": [0, 0, 80, 170, 260, 330, 360, 360],
+    "lift_seq": [0, 3, 0, 0, 0, 0, 0, 0],
+    # Front/back views: the body sinks into a ball over legs drawn up beneath it, forearms pulled in;
+    # mid-roll (frames 4-5) shows the opposite view upside down, as a forward roll toward you would.
+    "bob": [4, 8, 18, 22, 22, 14, 6, 1],
+    "legs_up": [2, 4, 8, 10, 10, 6, 2, 0],
+    "arm_tuck": [0.3, 1.0, 1.0, 1.0, 1.0, 1.0, 0.6, 0.2],
+    "front_flip": [False, False, False, True, True, False, False, False],
+    "airborne": [],
+    "stance": [],
+    "stride": {"side": 0, "diagonal": 0, "front": 0},
+    "lift": {"side": 0, "diagonal": 0, "front": 0},
+    "diagonal_scale": 1.0,
+    "arm_deg": {"side": 0, "diagonal": 0, "front": 0},
+    "pump": {"up": 6, "back_up": 6, "tuck": 2},
+    "cloak_trail": 4.0,
+    "cloak_sway": 2.0,
+    "lean_deg": 0,
+}
+SRC = {"dir": None, "prefix": "cf_human_m_full_rags_walk"}  # where base poses load from (front/back roll swaps views)
 STYLE = STYLES["walk"]
 CELL, PIVOT = 96, (48, 88)
 HIP = 66  # first leg row after pivoting
@@ -132,6 +162,24 @@ def lum(c):
 
 def steel(c):
     return abs(c[0] - c[1]) < 22 and abs(c[1] - c[2]) < 22 and lum(c) > 30
+
+
+def outline_dark(c):
+    return lum(c) < 45
+
+
+def skin(c):
+    return c[0] > 150 and c[0] - c[2] > 60
+
+
+def cloth_tone(colours):
+    """The middle cloth tone of some colours: skips near-black outline and skin, then takes the median by
+    brightness. Fills made from it read as fabric, not black spots or bright skin strips."""
+    pool = [c for c in colours if not outline_dark(c) and not skin(c)]
+    if not pool:
+        pool = [c for c in colours if not outline_dark(c)] or list(colours)
+    pool.sort(key=lum)
+    return pool[len(pool) // 2]
 
 
 def brown(c):
@@ -310,12 +358,17 @@ def posed_legs(labels, colour, i, cx, bottom, split_x, kind, facing, diagonal, b
         if not pts:
             continue
         hx = sum(x for x, y in pts) / len(pts)
-        a1, a2 = leg_pose(phase, diagonal)
+        if STYLE.get("frame_poses"):
+            pose = STYLE["frame_poses"][i][0 if side > 0 else 1]
+            k = STYLE["diagonal_scale"] if diagonal else 1.0
+            a1, a2 = math.radians(pose[0] * k), math.radians(pose[1] * k)
+        else:
+            a1, a2 = leg_pose(phase, diagonal)
         # Segments overlap by 2 rows at each joint, so the knee and ankle never open a seam.
         thigh = {q: c for q, c in pts.items() if q[1] < knee_y + 2}
         shin = {q: c for q, c in pts.items() if knee_y - 1 <= q[1] < ankle_y + 1}
         boot = {q: c for q, c in pts.items() if q[1] >= ankle_y}
-        planted = (phase % 8) in STYLE["stance"]
+        planted = (phase % 8) in STYLE["stance"] or (STYLE.get("frame_poses") and i in (0, 7))
         knee = (hx + (knee_y - hip_y) * math.sin(f * a1), hip_y + bob + (knee_y - hip_y) * math.cos(a1))
         ankle = (knee[0] + (ankle_y - knee_y) * math.sin(f * (a1 + a2)),
                  knee[1] + (ankle_y - knee_y) * math.cos(a1 + a2))
@@ -340,19 +393,28 @@ def frame(base, direction, i):
     kind, facing = VIEW[direction]
     parts = PARTS[direction]
     diagonal = facing != 0 and kind != "side"
+    flip = bool(STYLE.get("front_flip")) and kind in ("front", "back") and not diagonal and STYLE["front_flip"][i]
+    if flip:  # mid-roll toward/away from the camera shows the opposite side, upside down
+        other = "N" if direction == "S" else "S"
+        base = pivoted(f"{SRC['dir']}/{SRC['prefix']}_{LABEL_FOR[other]}_frame01.png")
+        parts = PARTS[other]
     p = 2 * math.pi * i / 8
     px = base.load()
     labels = split(base, parts)
     colour = {pt: px[pt[0], pt[1]] for pt in labels}
     cx, bottom = feet_centre(base)
-    posed = bool(STYLE.get("poses")) and (kind == "side" or diagonal)
-    bob = body_drop(i, bottom, diagonal) if posed else STYLE["bob"][i]
-    prev_bob = body_drop((i - 1) % 8, bottom, diagonal) if posed else STYLE["bob"][i - 1]
+    posed = bool(STYLE.get("poses") or STYLE.get("frame_poses")) and (kind == "side" or diagonal)
+    rolling = bool(STYLE.get("roll_seq"))
+    if rolling and posed:
+        bob = prev_bob = 0  # the finished frame is set on the floor afterwards
+    else:
+        bob = body_drop(i, bottom, diagonal) if posed else STYLE["bob"][i]
+        prev_bob = body_drop((i - 1) % 8, bottom, diagonal) if posed else STYLE["bob"][i - 1]
     layers = []  # list of dicts {(x, y): rgba}, drawn in order
 
-    # Underlayer: the cloth's resting shape, 30% darker, drawn first. When the tunic flap or cloak tail
+    # Underlayer: the cloth's resting shape, 15% darker, drawn first. When the tunic flap or cloak tail
     # sways away, this shows as the shaded fabric/pants behind it instead of an empty space.
-    layers.append({(x, y + bob): (int(c[0] * 0.7), int(c[1] * 0.7), int(c[2] * 0.7), c[3])
+    layers.append({(x, y + bob): (int(c[0] * 0.85), int(c[1] * 0.85), int(c[2] * 0.85), c[3])
                    for (x, y), c in ((pt, colour[pt]) for pt, lab in labels.items() if lab == "cloak")})
 
     # Legs. The boot is never rotated or cropped: it slides as one upright block (sole flat on the ground
@@ -409,6 +471,8 @@ def frame(base, direction, i):
         # The planted leg stays on the ground. A swinging leg lifts as one piece (its top tucks under the
         # body), together with the body bob, so no row is ever stretched or skipped.
         dy = min(0, bob) - up if swinging > 0 else 0  # a foot never goes below the ground line
+        if STYLE.get("legs_up"):
+            dy = -STYLE["legs_up"][i]  # both legs drawn up under the body
         if i in STYLE["airborne"] and swinging == 0:
             dy = -1  # flight: the trailing foot has left the ground too
         boot = set()
@@ -436,8 +500,8 @@ def frame(base, direction, i):
             continue
         dx = -facing if (kind == "side" and rising and y <= top + 1) else 0
         body[(x + dx, y + bob)] = colour[(x, y)]
-    # Where an arm moved off the body, show shadowed torso behind it: a flat shadow tone taken from the
-    # torso on that row (its darker cloth, a quarter of the way up from the darkest). A copy of the arm
+    # Where an arm moved off the body, show shadowed torso behind it: the torso's middle cloth tone,
+    # 15% darker (the darkest tones read as black spots). A copy of the arm
     # itself would leave a ghost second arm behind the swinging one.
     # Only inside the body's outline: between the leftmost and rightmost non-arm pixel of that row.
     span = {}
@@ -448,10 +512,11 @@ def frame(base, direction, i):
             span[y] = (min(lo, x), max(hi, x))
             if lab == "body":
                 row_cloth.setdefault(y, []).append(colour[(x, y)])
-    shadow = {}
-    for y, cols in row_cloth.items():
-        cols.sort(key=lum)
-        shadow[y] = cols[len(cols) // 4]
+    # One tone for the whole torso (a tone per row painted horizontal stripes).
+    every = [c for cols in row_cloth.values() for c in cols]
+    tone = cloth_tone(every) if every else None
+    shade = (int(tone[0] * 0.85), int(tone[1] * 0.85), int(tone[2] * 0.85), tone[3]) if tone else None
+    shadow = {y: shade for y in row_cloth}
     for (x, y), lab in labels.items():
         if not isinstance(lab, tuple) or lab[0] != "arm" or y not in span:  # arms only, never the sword
             continue
@@ -495,6 +560,8 @@ def frame(base, direction, i):
             fore = {q: c for q, c in pts.items() if q[1] >= elbow}
             pump = math.sin(p) * arm["phase"]
             toward = pump if kind == "front" else -pump  # > 0: this forearm comes toward the camera
+            if STYLE.get("arm_tuck"):
+                toward = STYLE["arm_tuck"][i]  # both forearms pulled in
             inward = 1 if arm["pivot"][0] < cx else -1
             P = STYLE["pump"]
             if toward >= 0:
@@ -513,7 +580,11 @@ def frame(base, direction, i):
             continue
         # Rigid swing about the shoulder: no stretching, so the arm keeps its length.
         scale = 1.0
-        if kind == "side":
+        if STYLE.get("arm_seq") and (kind == "side" or diagonal):
+            # + = reaching forward. Diagonal drawings hang the arms at the sides, so a big in-picture
+            # swing would throw them off the body: they get 40% of the side-view swing.
+            angle = facing * math.radians(STYLE["arm_seq"][i] * (0.4 if diagonal else 1.0))
+        elif kind == "side":
             angle = -facing * math.radians(STYLE["arm_deg"]["side"]) * math.cos(p)  # counter-swing: back while the leading leg is forward
         else:
             fwd = math.sin(p) * arm["phase"]
@@ -530,6 +601,8 @@ def frame(base, direction, i):
     # rigid piece about the hip, so nothing in it stretches. Full lean from the side, half on diagonals;
     # a lean toward or away from the camera doesn't show, so front/back views stay upright.
     lean = STYLE["lean_deg"] * (1.0 if kind == "side" else 0.5 if diagonal else 0.0)
+    if STYLE.get("lean_seq"):
+        lean = STYLE["lean_seq"][i] * (1.0 if kind == "side" else 0.7) if (kind == "side" or diagonal) else 0
     if lean:
         under, legs_layers, rest = layers[0], layers[1:3], layers[3:]
         upper = {}
@@ -541,7 +614,7 @@ def frame(base, direction, i):
         while True:
             angle = -(facing or 1) * math.radians(lean)  # negative tips the top toward +x when facing right
             leaned = transform(upper, hip, angle, 1.0, (0, 0))
-            if lean <= 0 or max(y for x, y in leaned) <= bottom:
+            if lean <= 0 or rolling or max(y for x, y in leaned) <= bottom:
                 break
             lean -= 1
         # the cloth underlayer leans too but stays beneath the legs
@@ -557,6 +630,9 @@ def frame(base, direction, i):
             span[y] = (min(lo, x), max(hi, x))
     layers[0] = {(x, y): c for (x, y), c in layers[0].items() if y in span and span[y][0] <= x <= span[y][1]}
 
+    if rolling:
+        layers, blades = roll_and_land(layers, blades, kind, facing, diagonal, i, flip)
+
     LAST_BLADE.clear()
     LAST_BLADE.update(blades)
 
@@ -566,7 +642,57 @@ def frame(base, direction, i):
         for (x, y), c in layer.items():
             if 0 <= x < base.width and 0 <= y < base.height:
                 dst[x, y] = c
-    return cleanup(out)
+    out = cleanup(out)
+    if rolling:  # the cleanup may have trimmed the lowest stray pixel: set the frame on the floor again
+        ground = PIVOT[1] - 1 - (STYLE["lift_seq"][i] if STYLE.get("lift_seq") else 0)
+        dy = ground - (out.getbbox()[3] - 1)
+        if dy:
+            moved = Image.new("RGBA", out.size, (0, 0, 0, 0))
+            moved.alpha_composite(out, (0, max(0, dy)), (0, max(0, -dy)))
+            out = moved
+            shifted = {(x, y + dy) for x, y in LAST_BLADE}
+            LAST_BLADE.clear()
+            LAST_BLADE.update(shifted)
+    return out
+
+
+def roll_and_land(layers, blades, kind, facing, diagonal, i, flip):
+    """Dodge: spin the whole figure (one rigid piece, RotSprite) through this frame's roll angle, flip it
+    upside down on the front/back mid-roll frames, then set its lowest pixel on the floor (plus lift)."""
+    whole = {}
+    for layer in layers:
+        whole.update(layer)
+    if not whole:
+        return layers, blades
+    xs = [q[0] for q in whole]
+    ys = [q[1] for q in whole]
+    centre = ((min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2)
+    moves = []
+    roll = STYLE["roll_seq"][i] % 360 if (kind == "side" or diagonal) else 0
+    if roll:
+        angle = -(facing or 1) * math.radians(roll)  # forward roll: the head goes over toward the facing way
+        whole = transform(whole, centre, angle, 1.0, (0, 0))
+        blades = set(transform({q: (0, 0, 0, 255) for q in blades}, centre, angle, 1.0, (0, 0)))
+        moves.append(("rot", centre, angle))
+    if flip:
+        top, low = min(y for x, y in whole), max(y for x, y in whole)
+        whole = {(x, top + low - y): c for (x, y), c in whole.items()}
+        blades = {(x, top + low - y) for x, y in blades}
+        moves.append(("flip", top, low))
+    ground = PIVOT[1] - 1 - STYLE["lift_seq"][i] if STYLE.get("lift_seq") else PIVOT[1] - 1
+    dy = ground - max(y for x, y in whole)
+    whole = {(x, y + dy): c for (x, y), c in whole.items()}
+    blades = {(x, y + dy) for x, y in blades}
+    # boots follow the same moves, so the cleanup still protects their toe and heel tips
+    for k, boot in enumerate(LAST_BOOTS):
+        pts = {q: (0, 0, 0, 255) for q in boot}
+        for m in moves:
+            if m[0] == "rot":
+                pts = transform(pts, m[1], m[2], 1.0, (0, 0))
+            else:
+                pts = {(x, m[1] + m[2] - y): c for (x, y), c in pts.items()}
+        LAST_BOOTS[k] = {(x, y + dy) for x, y in pts}
+    return [whole], blades
 
 
 STRAY_ISLAND = 8  # px; detached bits this small are removed
@@ -631,10 +757,10 @@ def fill_from_neighbours(im, spots):
                 if 0 <= x + dx < w and 0 <= y + dy < h and px[x + dx, y + dy][3]]
         if not near:  # no direct neighbour yet: it fills on a later pass as the gap closes inward
             continue
-        # A closed gap reads as a fold or shadow: use the darkest neighbour that isn't the blade
-        # (copying the most common neighbour painted bright skin strips along swinging arms).
-        cloth = [px[q] for q in near if q not in LAST_BLADE] or [px[q] for q in near]
-        px[x, y] = min(cloth, key=lum)
+        # A closed gap takes the middle cloth tone of its non-blade neighbours: the darkest neighbour left
+        # black spots (it was usually the outline), the most common one painted skin strips along arms.
+        c = cloth_tone([px[q] for q in near if q not in LAST_BLADE] or [px[q] for q in near])
+        px[x, y] = (int(c[0] * 0.85), int(c[1] * 0.85), int(c[2] * 0.85), c[3])  # a soft fold, not black
 
 
 KNEE = HIP + 6  # rows from here down are left open between the legs
@@ -677,6 +803,77 @@ def interior_gaps(im):
     return out
 
 
+def pieces(im):
+    """8-connected opaque pieces, largest first."""
+    px = im.load()
+    w, h = im.size
+    seen, out = set(), []
+    for y in range(h):
+        for x in range(w):
+            if px[x, y][3] and (x, y) not in seen:
+                comp, stack = [], [(x, y)]
+                seen.add((x, y))
+                while stack:
+                    a, b = stack.pop()
+                    comp.append((a, b))
+                    for dx, dy in NEIGHBOURS:
+                        n = (a + dx, b + dy)
+                        if 0 <= n[0] < w and 0 <= n[1] < h and n not in seen and px[n][3]:
+                            seen.add(n)
+                            stack.append(n)
+                out.append(comp)
+    out.sort(key=len, reverse=True)
+    return out
+
+
+REATTACH_REACH = 6  # px: how far a detached arm/sword/cloth piece may slide to touch the body again
+
+
+def reattach(im):
+    """A part that ended up detached (an arm or blade swung clear of the shoulder) slides, unchanged, the
+    shortest distance that makes it touch the body again. Tiny specks are left to the stray-island sweep."""
+    px = im.load()
+    w, h = im.size
+    for _ in range(4):
+        found = pieces(im)
+        if len(found) < 2:
+            return
+        main = set(found[0])
+        moved = False
+        for comp in found[1:]:
+            if len(comp) <= STRAY_ISLAND:
+                continue
+            colours = {q: px[q] for q in comp}
+            touch = {(x + dx, y + dy) for x, y in main for dx, dy in NEIGHBOURS}
+            best = None
+            for r in range(1, REATTACH_REACH + 1):
+                for dx in range(-r, r + 1):
+                    for dy in range(-r, r + 1):
+                        if max(abs(dx), abs(dy)) != r:
+                            continue
+                        if any((x + dx, y + dy) in touch for x, y in comp):
+                            d = dx * dx + dy * dy
+                            if best is None or d < best[0]:
+                                best = (d, dx, dy)
+                if best:
+                    break
+            if not best:
+                continue
+            _, dx, dy = best
+            for q in comp:
+                px[q] = (0, 0, 0, 0)
+            for (x, y), c in colours.items():
+                if 0 <= x + dx < w and 0 <= y + dy < h and not px[x + dx, y + dy][3]:
+                    px[x + dx, y + dy] = c
+            if any(q in LAST_BLADE for q in comp):
+                for q in comp:
+                    LAST_BLADE.discard(q)
+                LAST_BLADE.update((x + dx, y + dy) for x, y in comp)
+            moved = True
+        if not moved:
+            return
+
+
 def cleanup(im):
     """Trim hairline dashes, drop stray islands of STRAY_ISLAND pixels or fewer, then close every gap
     a moving part opened."""
@@ -698,6 +895,7 @@ def cleanup(im):
                 cut.append((x, y))
         for q in cut:
             px[q] = (0, 0, 0, 0)
+    reattach(im)
     w, h = im.size
     seen = set()
     for y in range(h):
@@ -773,6 +971,7 @@ def main():
     a = ap.parse_args()
     global STYLE
     STYLE = STYLES[a.style]
+    SRC["dir"], SRC["prefix"] = a.src_dir, a.prefix
 
     sheet = Image.new("RGBA", (CELL * 8, CELL * len(ROWS)), (0, 0, 0, 0))
     built = {}
