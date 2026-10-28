@@ -2,8 +2,9 @@
 -- Ranges: each recolourable class's brightness range in the drawing (2nd to 98th percentile).
 -- Anims without a map here are classified in game by ClassMap.ClassifyUpright.
 return {
-	Ranges = { skin = { 43.2, 185.7 }, hair = { 12.9, 59.3 }, outfit = { 14.1, 81.3 } },
+	Ranges = { skin = { 48.0, 184.9 }, hair = { 14.7, 67.2 }, outfit = { 14.1, 81.6 } },
 	Anims = {
+		idle = require(script.Parent.humanm_idle),
 		walk = require(script.Parent.humanm_walk),
 		run = require(script.Parent.humanm_run),
 		dodge = require(script.Parent.humanm_dodge),

@@ -75,7 +75,7 @@ end
 
 spec["profiles sanitise; old look-only saves still load"] = function()
 	local old = Profile.Sanitize("f:deep:ash:wine")
-	T.eq(old.look, "f:deep:ash:wine")
+	T.eq(old.look, "f:deep:ash:wine:long")
 	T.eq(old.class, Classes.Default)
 	T.eq(#old.traits, 0)
 	local p = Profile.Sanitize({ v = 2, look = "m:tan:copper:linen", class = "warder", origin = "lantern", traits = { "hardy", "fleet" } })
@@ -95,7 +95,7 @@ spec["after creation only look and class can change"] = function()
 	local current = Profile.Sanitize({ look = "m:tan:copper:linen", class = "duelist", origin = "varrow", traits = { "fleet", "tinker" } })
 	local ask = { look = "m:deep:ash:wine", class = "breaker", origin = "compact", traits = { "hardy", "haggler" } }
 	local later = Profile.Apply(current, ask, false)
-	T.eq(later.look, "m:deep:ash:wine")
+	T.eq(later.look, "m:deep:ash:wine:messy")
 	T.eq(later.class, "breaker")
 	T.eq(later.origin, "varrow", "origin fixed")
 	T.eq(Profile.EncodeTraits(later.traits), "fleet,tinker", "traits fixed")

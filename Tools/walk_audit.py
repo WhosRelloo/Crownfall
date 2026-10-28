@@ -48,8 +48,8 @@ def main():
             # Three-quarter views stand the far foot 1 px higher (1 px allowed); runs also have flight frames.
             room = 6 if f in W.STYLE["airborne"] else lift_room  # airborne frames: both feet are up
             if rolling:
-                # with a hairstyle-shared landing (motion file) a roll may sit up to 2 px higher, so no hair dips below
-                room = W.STYLE["lift_seq"][f] + (2 if W.MOTION["fixed"] else 0)
+                # with a hairstyle-shared landing (motion file) a roll may sit up to 3 px higher (the longest hair needs it), so no hair dips below
+                room = W.STYLE["lift_seq"][f] + (3 if W.MOTION["fixed"] else 0)
             if not (W.PIVOT[1] - 1 - room <= b[3] - 1 <= W.PIVOT[1] - 1):
                 fails.append(f"{tag}: lowest pixel on row {b[3] - 1}, ground line is {W.PIVOT[1] - 1}")
             h = b[3] - b[1]

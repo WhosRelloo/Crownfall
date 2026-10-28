@@ -280,6 +280,12 @@ STYLES = {
 }
 
 
+import hair_styles  # noqa: E402  (silhouette-drawn styles, shaded by Tools/hair_gen.py)
+
+STYLES["m"] += hair_styles.MALE
+STYLES["f"] += hair_styles.FEMALE
+
+
 def style(body, style_id):
     for entry in STYLES[body]:
         if entry[0] == style_id:
@@ -302,8 +308,10 @@ def styled_base(male_base, direction, body, style_id):
         under = bald_base(male_base, direction, body)
         under.alpha_composite(art)
         return under, hair_px
-    x0, y0, rows = overlays[direction]
+    bald = bald_base(male_base, direction, body)
+    overlay = overlays(direction, bald) if callable(overlays) else overlays[direction]
+    x0, y0, rows = overlay
     assert not any("x" in r for r in rows), f"{style_id} {direction}: hair overlays never erase"
     assert len({len(r) for r in rows}) == 1, f"{style_id} {direction}: rows of different widths"
     hair = {(x0 + dx, y0 + dy) for dy, r in enumerate(rows) for dx, ch in enumerate(r) if ch in female.HAIR_TONES}
-    return female.paint(bald_base(male_base, direction, body), overlays[direction], seed=7), hair
+    return female.paint(bald, overlay, seed=7), hair

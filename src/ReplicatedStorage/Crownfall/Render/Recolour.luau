@@ -8,6 +8,7 @@ local RS = game:GetService("ReplicatedStorage")
 
 local Appearance = require(RS.Crownfall.Shared.Appearance)
 local ClassMap = require(script.Parent.ClassMap)
+local HairLayer = require(script.Parent.HairLayer)
 local SheetMath = require(script.Parent.SheetMath)
 
 local Recolour = {}
@@ -39,10 +40,15 @@ local function mapsFor(art)
 	return module and require(module)
 end
 
-local function classesFor(art, anim: string, strip: string, pixels: buffer, size: Vector2): buffer
+local function classesFor(art, anim: string, strip: string, pixels: buffer, size: Vector2, text: string?): buffer
 	local key = art.Rig .. "/" .. strip
 	local found = classCache[key]
 	if found then
+		return found
+	end
+	if text then -- a hair atlas carries its own map
+		found = ClassMap.Decode(text, size.X, size.Y)
+		classCache[key] = found
 		return found
 	end
 	local maps = mapsFor(art)
@@ -120,7 +126,7 @@ local function bake(job)
 	buffer.copy(pixels, 0, source.pixels)
 	local image = AssetService:CreateEditableImage({ Size = size })
 	local ok, err = pcall(function()
-		local classes = classesFor(job.art, job.anim, job.strip, pixels, size)
+		local classes = classesFor(job.art, job.anim, job.strip, pixels, size, job.classes)
 		local maps = mapsFor(job.art)
 		local ranges = Appearance.RangesByClass(maps.Ranges)
 		paint(pixels, classes, size.X * size.Y, Appearance.Ramps(job.look), ranges)
@@ -201,6 +207,36 @@ function Recolour.Get(art, look, anim: string, direction: string)
 	return key and baked[key]
 end
 
+local function enqueueHair(art, look, urgent: boolean): string?
+	local data = HairLayer.For(art, look.style)
+	if not data then
+		return nil
+	end
+	local strip = "hair:" .. data.Id
+	local key = art.Rig .. "|" .. Appearance.Encode(look) .. "|" .. strip
+	if baked[key] or broken or queued[key] then
+		return key
+	end
+	queued[key] = true
+	local job = { key = key, id = data.Image, art = art, look = look, anim = "hair", strip = strip, classes = data.Classes }
+	if urgent then
+		table.insert(queue, 1, job)
+	else
+		table.insert(queue, job)
+	end
+	work()
+	return key
+end
+
+-- The look's hairstyle atlas repainted with its hair colour, or nil while it bakes / when nothing needs painting.
+function Recolour.GetHair(art, look)
+	if Appearance.IsDrawn(look) or not mapsFor(art) then
+		return nil
+	end
+	local key = enqueueHair(art, look, true)
+	return key and baked[key]
+end
+
 -- Queues every animation in every direction for a look, so they are ready before they are first shown.
 function Recolour.Prepare(art, look)
 	if Appearance.IsDrawn(look) or not mapsFor(art) then
@@ -215,6 +251,7 @@ function Recolour.Prepare(art, look)
 			enqueue(art, look, anim, "S", false)
 		end
 	end
+	enqueueHair(art, look, false)
 end
 
 -- True once every image of a look is baked (or recolouring is off).
@@ -230,7 +267,8 @@ function Recolour.IsReady(art, look): boolean
 			end
 		end
 	end
-	return true
+	local hair = HairLayer.For(art, look.style)
+	return hair == nil or baked[art.Rig .. "|" .. Appearance.Encode(look) .. "|hair:" .. hair.Id] ~= nil
 end
 
 return Recolour

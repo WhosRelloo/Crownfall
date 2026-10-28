@@ -3,6 +3,7 @@
 local PixelArt = require(script.Parent.PixelArt)
 local SheetMath = require(script.Parent.SheetMath)
 local Recolour = require(script.Parent.Recolour)
+local HairLayer = require(script.Parent.HairLayer)
 
 local ROWS_CANVAS_SCALE = 8 -- SurfaceGui pixels per placeholder pixel
 local SHEET_CANVAS_SCALE = 4 -- SurfaceGui pixels per sheet pixel
@@ -33,17 +34,25 @@ function SpriteCard.new(art, parent: Instance)
 	gui.LightInfluence = 1
 	gui.Parent = part
 
-	local image = nil
+	local image, hair = nil, nil
 	if art.Kind == "Sheet" then
 		image = Instance.new("ImageLabel")
 		image.BackgroundTransparency = 1
 		image.Size = UDim2.fromScale(1, 1)
 		image.ResampleMode = Enum.ResamplerMode.Pixelated
 		image.Parent = gui
+		hair = Instance.new("ImageLabel") -- the hairstyle layer (Render/HairLayer), drawn over the body
+		hair.Name = "Hair"
+		hair.BackgroundTransparency = 1
+		hair.ResampleMode = Enum.ResamplerMode.Pixelated
+		hair.ZIndex = 2
+		hair.Visible = false
+		hair.Parent = gui
 	end
 
 	part.Parent = parent
-	return setmetatable({ part = part, gui = gui, image = image, art = art, shown = nil, pivot = art.Pivot }, SpriteCard)
+	return setmetatable({ part = part, gui = gui, image = image, hair = hair, art = art, shown = nil, pivot = art.Pivot },
+		SpriteCard)
 end
 
 -- Paints this card with a look (Shared/Appearance); nil shows the drawn colours.
@@ -64,7 +73,9 @@ function SpriteCard:Show(direction: string, anim: string, frame: number)
 		frame = 1
 	end
 	local painted = art.Kind == "Sheet" and self.look and Recolour.Get(art, self.look, anim, direction)
-	local key = direction .. "/" .. anim .. "/" .. frame .. (if painted then "*" else "")
+	local hairData = art.Kind == "Sheet" and self.look and HairLayer.For(art, self.look.style)
+	local hairPainted = hairData and Recolour.GetHair(art, self.look)
+	local key = direction .. "/" .. anim .. "/" .. frame .. (if painted then "*" else "") .. (if hairPainted then "h" else "")
 	if key == self.shown then
 		return
 	end
@@ -78,6 +89,7 @@ function SpriteCard:Show(direction: string, anim: string, frame: number)
 		self.image.ImageRectOffset = rect.Offset
 		self.image.ImageRectSize = rect.Size
 		self.pivot = rect.Pivot
+		HairLayer.Show(self.hair, hairData or nil, hairPainted or nil, anim, direction, frame, art.Cell)
 		return
 	end
 

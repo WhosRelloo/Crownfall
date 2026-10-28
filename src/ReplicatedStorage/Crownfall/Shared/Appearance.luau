@@ -1,6 +1,7 @@
 -- Character appearance (Docs/Character-Customization.md, Phase A): what a player picked, how it is saved and
 -- checked, and the recolour maths. Colour sets live in AppearanceData (generated from Art/Sprites/palettes.json).
 local Data = require(script.Parent.AppearanceData)
+local HairData = require(script.Parent.HairData)
 
 local Appearance = {}
 
@@ -17,9 +18,20 @@ Appearance.Bodies = {
 	{ Id = "f", Name = "Female", Art = "humanf" },
 }
 
-export type Look = { body: string, skin: string, hair: string, outfit: string }
+-- hair is the hair colour; style is the hairstyle (HairData, per body; the first is the body's own).
+export type Look = { body: string, skin: string, hair: string, outfit: string, style: string }
 
-Appearance.Default = { body = "m", skin = "sand", hair = "raven", outfit = "undyed" } :: Look
+Appearance.Hairstyles = HairData
+Appearance.Default = { body = "m", skin = "sand", hair = "raven", outfit = "undyed", style = HairData.m[1].Id } :: Look
+
+function Appearance.FindStyle(bodyId: string, id: any)
+	for _, entry in ipairs(HairData[bodyId] or {}) do
+		if entry.Id == id then
+			return entry
+		end
+	end
+	return nil
+end
 
 -- Artist-picked starting looks; the creator starts from one and the player edits from there.
 Appearance.Presets = {
@@ -69,13 +81,15 @@ function Appearance.Sanitize(look: any): Look
 			out[slot] = id
 		end
 	end
+	-- a hairstyle belongs to a body: anything else becomes that body's own hair
+	out.style = if Appearance.FindStyle(out.body, look.style) then look.style else HairData[out.body][1].Id
 	return out
 end
 
--- Saved and replicated as one short string: "m:sand:raven:undyed".
+-- Saved and replicated as one short string: "m:sand:raven:undyed:messy" (older saves lack the hairstyle).
 function Appearance.Encode(look: Look): string
 	look = Appearance.Sanitize(look)
-	return table.concat({ look.body, look.skin, look.hair, look.outfit }, ":")
+	return table.concat({ look.body, look.skin, look.hair, look.outfit, look.style }, ":")
 end
 
 function Appearance.Decode(text: any): Look
@@ -83,7 +97,7 @@ function Appearance.Decode(text: any): Look
 		return Appearance.Sanitize(nil)
 	end
 	local parts = string.split(text, ":")
-	return Appearance.Sanitize({ body = parts[1], skin = parts[2], hair = parts[3], outfit = parts[4] })
+	return Appearance.Sanitize({ body = parts[1], skin = parts[2], hair = parts[3], outfit = parts[4], style = parts[5] })
 end
 
 -- A random look; with `slot`, only that slot changes (the creator's per-row dice).

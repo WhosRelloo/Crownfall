@@ -16,6 +16,7 @@ local Render = RS.Crownfall.Render
 local Arts = require(Render.Arts)
 local Recolour = require(Render.Recolour)
 local SheetMath = require(Render.SheetMath)
+local HairLayer = require(Render.HairLayer)
 
 local player = Players.LocalPlayer
 local remote = RS:WaitForChild("CrownfallAppearance")
@@ -329,7 +330,7 @@ local function build(firstTime: boolean)
 		end
 		b.MouseButton1Click:Connect(function()
 			local nextLook = table.clone(preset.Look)
-			nextLook.body = look.body
+			nextLook.body, nextLook.style = look.body, look.style
 			setLook(nextLook)
 		end)
 		presetButtons[i] = { button = b, preset = preset }
@@ -360,6 +361,8 @@ local function build(firstTime: boolean)
 		Size = UDim2.fromOffset(150, 26) }, { corner(13) }) -- ground shadow under the feet
 	local sprite = new("ImageLabel", { Parent = stage, BackgroundTransparency = 1,
 		ResampleMode = Enum.ResamplerMode.Pixelated, Size = UDim2.fromOffset(96 * PREVIEW_SCALE, 96 * PREVIEW_SCALE) })
+	local hairSprite = new("ImageLabel", { Name = "Hair", Parent = sprite, BackgroundTransparency = 1, ZIndex = 2,
+		ResampleMode = Enum.ResamplerMode.Pixelated, Visible = false })
 	local painting = label({ Parent = stage, Text = "Painting…", TextSize = 14, TextColor3 = C.muted,
 		TextXAlignment = Enum.TextXAlignment.Right, Position = UDim2.fromOffset(300, 12), Size = UDim2.fromOffset(186, 18) })
 
@@ -434,7 +437,52 @@ local function build(firstTime: boolean)
 	local y = 96
 	y = swatchRow(options, "skin", "Skin", y)
 	y = swatchRow(options, "hair", "Hair", y)
-	swatchRow(options, "outfit", "Outfit dye", y)
+	y = swatchRow(options, "outfit", "Outfit dye", y)
+
+	-- Hairstyle: cycles through the styles of this body whose art is in the game
+	local function styles()
+		local list = {}
+		for _, entry in ipairs(Appearance.Hairstyles[look.body] or {}) do
+			if HairLayer.For(Arts.For(look.body), entry.Id) then
+				table.insert(list, entry)
+			end
+		end
+		return list
+	end
+	sectionTitle(options, "Hairstyle", 18, y)
+	local styleName = label({ Parent = options, Text = "", Font = TITLE, TextSize = 20, TextXAlignment = Enum.TextXAlignment.Center,
+		Position = UDim2.fromOffset(64, y + 22), Size = UDim2.fromOffset(210, 30) })
+	local prevStyle = button({ Name = "StylePrev", Parent = options, Text = "◀", TextSize = 16, Position = UDim2.fromOffset(18, y + 22),
+		Size = UDim2.fromOffset(40, 30) })
+	local nextStyle = button({ Name = "StyleNext", Parent = options, Text = "▶", TextSize = 16, Position = UDim2.fromOffset(280, y + 22),
+		Size = UDim2.fromOffset(40, 30) })
+	local function cycle(step: number)
+		local list = styles()
+		if #list == 0 then
+			return
+		end
+		local at = 1
+		for i, entry in ipairs(list) do
+			if entry.Id == look.style then
+				at = i
+			end
+		end
+		local nextLook = table.clone(look)
+		nextLook.style = list[(at - 1 + step) % #list + 1].Id
+		setLook(nextLook)
+	end
+	prevStyle.MouseButton1Click:Connect(function()
+		cycle(-1)
+	end)
+	nextStyle.MouseButton1Click:Connect(function()
+		cycle(1)
+	end)
+	table.insert(refreshers, function()
+		local list = styles()
+		local current = Appearance.FindStyle(look.body, look.style)
+		styleName.Text = if #list > 1 and current then current.Name else "More styles soon"
+		prevStyle.Visible, nextStyle.Visible = #list > 1, #list > 1
+	end)
 
 	-- Class step ------------------------------------------------------------------------------------------------
 	local classLeft = own("class", panel({ Name = "ClassList", Parent = root, Position = UDim2.fromOffset(0, 84), Size = UDim2.fromOffset(250, 576) }))
@@ -647,6 +695,8 @@ local function build(firstTime: boolean)
 		sprite.ImageRectSize = rect.Size
 		-- stand the feet pivot on the shadow
 		sprite.Position = UDim2.fromOffset(250 - rect.Pivot.X * PREVIEW_SCALE, 398 - rect.Pivot.Y * PREVIEW_SCALE)
+		local hairData = HairLayer.For(art, look.style)
+		HairLayer.Show(hairSprite, hairData, hairData and Recolour.GetHair(art, look) or nil, useAnim, direction, frame, art.Cell)
 		painting.Visible = painted == nil and not Appearance.IsDrawn(look)
 	end)
 

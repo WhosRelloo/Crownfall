@@ -54,7 +54,7 @@ end
 
 spec["encode and decode round-trip; junk decodes to the default"] = function()
 	local look = { body = "m", skin = "umber", hair = "frost", outfit = "wine" }
-	T.eq(Appearance.Encode(look), "m:umber:frost:wine")
+	T.eq(Appearance.Encode(look), "m:umber:frost:wine:messy", "the body's own hairstyle by default")
 	local back = Appearance.Decode("m:umber:frost:wine")
 	for k, v in pairs(look) do
 		T.eq(back[k], v, k)
@@ -62,6 +62,9 @@ spec["encode and decode round-trip; junk decodes to the default"] = function()
 	T.eq(Appearance.Encode(Appearance.Decode(42)), Appearance.Encode(Appearance.Default))
 	T.eq(Appearance.Encode(Appearance.Decode(string.rep("x", 200))), Appearance.Encode(Appearance.Default))
 	T.eq(Appearance.Decode("m:deep").skin, "deep", "a short string keeps what it has")
+	T.eq(Appearance.Decode("f:deep:ash:wine:bob").style, "bob")
+	T.eq(Appearance.Decode("m:deep:ash:wine:bob").style, "messy", "a hairstyle from the other body falls back")
+	T.eq(Appearance.Decode("f:deep:ash:wine").style, "long", "old saves get the body's own hair")
 end
 
 spec["random looks are valid; a slot dice changes only that slot"] = function()
