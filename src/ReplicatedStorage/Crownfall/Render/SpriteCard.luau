@@ -61,7 +61,7 @@ function SpriteCard:Show(direction: string, anim: string, frame: number)
 	if art.Kind == "Sheet" then
 		local def = art.Anims[anim]
 		local rect = SheetMath.Rect(def, direction, frame, art.Cell, art.Pivot)
-		self.image.Image = art.Layers.full[art.Outfit][anim]
+		self.image.Image = SheetMath.Image(def, direction) or art.Layers.full[art.Outfit][anim]
 		self.image.ImageRectOffset = rect.Offset
 		self.image.ImageRectSize = rect.Size
 		self.pivot = rect.Pivot

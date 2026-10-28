@@ -119,6 +119,23 @@ spec["standard 8-row sheets use every row"] = function()
 	T.eq(se.Size, Vector2.new(96, 96))
 end
 
+spec["per-direction strips read frame n of that direction's image"] = function()
+	local def = { Frames = 8, FPS = 10, Mode = "Loop", Images = { S = "rbxassetid://1", E = "rbxassetid://2" } }
+	local r = SheetMath.Rect(def, "E", 3, 96, Vector2.new(48, 88))
+	T.eq(r.Offset, Vector2.new(192, 0))
+	T.eq(r.Size, Vector2.new(96, 96))
+	T.eq(r.Pivot, Vector2.new(48, 88))
+	T.eq(SheetMath.Image(def, "E"), "rbxassetid://2")
+	T.eq(SheetMath.Image(def, "S"), "rbxassetid://1")
+end
+
+spec["the animation follows speed: idle, walk, then run"] = function()
+	local Config = require(game:GetService("ReplicatedStorage").Crownfall.Shared.Config)
+	T.eq(SheetMath.AnimFor(0.5), "idle")
+	T.eq(SheetMath.AnimFor(Config.Movement.WalkSpeed), "walk")
+	T.eq(SheetMath.AnimFor(Config.Movement.SprintSpeed), "run")
+end
+
 spec["frame timing loops, plays once and holds"] = function()
 	local loop = { Frames = 4, FPS = 6, Mode = "Loop" }
 	T.eq(SheetMath.FrameAt(loop, 0), 1)

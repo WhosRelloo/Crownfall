@@ -1,4 +1,6 @@
 -- Where a frame lives in a sprite sheet, and which frame plays at a given time (Docs/Art-Spec.md sections 2, 3, 10).
+local Config = require(script.Parent.Parent.Shared.Config)
+
 local SheetMath = {}
 
 -- Standard row order. Rows 5-7 (east side) are optional: a 5-row sheet mirrors them from the west side.
@@ -12,6 +14,10 @@ export type Rect = { Offset: Vector2, Size: Vector2, Pivot: Vector2 }
 -- A negative Size.X draws the frame mirrored.
 function SheetMath.Rect(def, direction: string, frame: number, cell: number, defaultPivot: Vector2): Rect
 	local pivot = def.Pivot or defaultPivot
+	if def.Images then
+		-- One image per direction: an 8-frame strip, frame n at column n.
+		return { Offset = Vector2.new((frame - 1) * cell, 0), Size = Vector2.new(cell, cell), Pivot = pivot }
+	end
 	local source, mirror = direction, false
 
 	local row, col
@@ -36,6 +42,20 @@ function SheetMath.Rect(def, direction: string, frame: number, cell: number, def
 		return { Offset = Vector2.new(x + cell, y), Size = Vector2.new(-cell, cell), Pivot = Vector2.new(cell - feetX, pivot.Y) }
 	end
 	return { Offset = Vector2.new(x, y), Size = Vector2.new(cell, cell), Pivot = Vector2.new(feetX, pivot.Y) }
+end
+
+-- The image a direction reads from: its own strip for per-direction animations, else nil (layer image).
+function SheetMath.Image(def, direction: string): string?
+	return def.Images and def.Images[direction] or nil
+end
+
+-- Which animation fits a horizontal speed (studs/s): idle, walk, or run once past halfway to sprint speed.
+function SheetMath.AnimFor(speed: number): string
+	local m = Config.Movement
+	if speed < m.MovingSpeed then
+		return "idle"
+	end
+	return if speed < (m.WalkSpeed + m.SprintSpeed) / 2 then "walk" else "run"
 end
 
 -- 1-based frame to show `elapsed` seconds after the animation started.

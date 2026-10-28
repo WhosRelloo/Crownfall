@@ -18,6 +18,37 @@ return {
 			Pivot = Vector2.new(48, 80),
 			FeetX = { S = 48, SE = 43, E = 42, SW = 52, NE = 45, N = 44, NW = 48, W = 54 },
 		},
+		-- Uploaded 2026-10-27 as one 8-frame strip (768 x 96) per direction; feet on the standard pivot.
+		walk = {
+			Frames = 8,
+			FPS = 10,
+			Mode = "Loop",
+			Images = {
+				S = "rbxassetid://75803123635354",
+				SW = "rbxassetid://79061646861695",
+				W = "rbxassetid://90353021831165",
+				NW = "rbxassetid://101986689346199",
+				N = "rbxassetid://121560794536755",
+				NE = "rbxassetid://130912852757511",
+				E = "rbxassetid://137310282059088",
+				SE = "rbxassetid://91400436204682",
+			},
+		},
+		run = {
+			Frames = 8,
+			FPS = 12,
+			Mode = "Loop",
+			Images = {
+				S = "rbxassetid://116626209923087",
+				SW = "rbxassetid://107770828476982",
+				W = "rbxassetid://132584542976980",
+				NW = "rbxassetid://112155676937784",
+				N = "rbxassetid://137030515857935",
+				NE = "rbxassetid://136192886369643",
+				E = "rbxassetid://87205627224690",
+				SE = "rbxassetid://87188108632950",
+			},
+		},
 	},
 	Layers = {
 		full = {

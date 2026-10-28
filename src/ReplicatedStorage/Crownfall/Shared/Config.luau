@@ -33,6 +33,12 @@ Config.Durability = {
 	Wear = { Hit = 1, Block = 2, GuardBroken = 8, PerfectParry = 0.1 },
 }
 
+Config.Movement = {
+	WalkSpeed = 8, -- studs/s
+	SprintSpeed = 18, -- studs/s while holding Sprint (Left Shift)
+	MovingSpeed = 1, -- below this the character counts as standing
+}
+
 Config.Render = {
 	Art = "humanm", -- manifest in Render/Art; falls back to the code-drawn placeholder if missing
 }

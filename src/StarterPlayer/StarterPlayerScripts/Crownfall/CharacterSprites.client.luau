@@ -10,10 +10,27 @@ local SheetMath = require(Render.SheetMath)
 local Facing = require(Render.Facing)
 local CameraMath = require(Render.CameraMath)
 
-local MOVING_SPEED = 1 -- studs/s
-
 local artModule = Render:FindFirstChild("Art") and Render.Art:FindFirstChild(Config.Render.Art)
 local art = require(artModule or Render.HeroSprite)
+
+-- Load every animation image up front, so switching to an animation (walk -> run) never shows a
+-- blank frame while its image downloads.
+task.spawn(function()
+	local ids = {}
+	for _, outfit in pairs((art.Layers and art.Layers.full) or {}) do
+		for _, id in pairs(outfit) do
+			table.insert(ids, id)
+		end
+	end
+	for _, def in pairs(art.Anims) do
+		for _, id in pairs(def.Images or {}) do
+			table.insert(ids, id)
+		end
+	end
+	if #ids > 0 then
+		game:GetService("ContentProvider"):PreloadAsync(ids)
+	end
+end)
 
 local camera = workspace.CurrentCamera
 local folder = Instance.new("Folder")
@@ -70,10 +87,9 @@ RunService:BindToRenderStep("CrownfallSprites", Enum.RenderPriority.Camera.Value
 			continue
 		end
 		local velocity = root.AssemblyLinearVelocity * Vector3.new(1, 0, 1)
-		local anim = "idle"
-		if velocity.Magnitude > MOVING_SPEED then
+		local anim = SheetMath.AnimFor(velocity.Magnitude)
+		if anim ~= "idle" then
 			t.direction = Facing.FromScreen(CameraMath.ToScreen(velocity))
-			anim = "run"
 		end
 		if anim ~= t.anim then
 			t.anim, t.startedAt = anim, now
