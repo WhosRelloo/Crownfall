@@ -79,12 +79,15 @@ STYLES["dodge"] = {  # a forward roll: crouch, dive, tuck and spin through a ful
     # Front/back views: the body sinks into a ball over legs drawn up beneath it, forearms pulled in and
     # the head tucked down behind the shoulders. Mid-roll (frames 3-5) shows the other side of him as a
     # round hunched back (right side up), the way a roll toward or away from the camera looks.
-    "bob": [4, 10, 17, 20, 18, 14, 6, 1],  # the ball keeps moving: deepest in the middle frame
-    "legs_up": [2, 4, 10, 14, 14, 8, 3, 0],
-    "head_tuck": [0, 2, 2, 4, 3, 2, 1, 0],  # enough to drop the face away, not so much the top goes flat
-    "cloth_gather": [0, 0, 6, 12, 9, 4, 0, 0],  # px the tunic/cloak rides up behind the ball
-    # In the ball the arms wrap low around the knees (pulled high, they made square corners)
-    "arm_tuck": [0.3, 1.0, 0.4, 0.4, 0.4, 1.0, 0.6, 0.2],
+    # 1 wind-up (arms back), 2 dive (low, arms thrust forward, legs kicked up out of sight), 3-5 the tucked
+    # roll (deepest in the middle), 6 landing crouch (hands forward to catch), 7 push up, 8 stand.
+    "bob": [6, 12, 17, 20, 18, 12, 5, 0],
+    "legs_up": [2, 8, 10, 14, 12, 6, 2, 0],
+    "head_tuck": [1, 3, 2, 4, 3, 2, 1, 0],  # enough to drop the face away, not so much the top goes flat
+    "cloth_gather": [0, 3, 6, 12, 9, 3, 0, 0],  # px the tunic/cloak rides up behind the ball
+    # + pulls the forearms up toward the camera, - swings them back behind the body. In the ball the
+    # arms wrap low around the knees (pulled high, they made square corners).
+    "arm_tuck": [-0.6, 1.0, 0.4, 0.4, 0.4, 0.8, 0.3, 0.0],
     "front_swap": [False, False, True, True, True, False, False, False],
     "airborne": [],
     "stance": [],
@@ -92,10 +95,11 @@ STYLES["dodge"] = {  # a forward roll: crouch, dive, tuck and spin through a ful
     "lift": {"side": 0, "diagonal": 0, "front": 0},
     "diagonal_scale": 1.0,
     "arm_deg": {"side": 0, "diagonal": 0, "front": 0},
-    "pump": {"up": 6, "back_up": 6, "tuck": 2},
+    "pump": {"up": 7, "back_up": 4, "tuck": 2},
     "cloak_trail": 4.0,
     "cloak_sway": 2.0,
     "lean_deg": 0,
+    "travel_studs": 2.5,  # how far the game moves the character over the dodge (previews show it)
 }
 SRC = {"dir": None, "prefix": "cf_human_m_full_rags_walk"}  # where base poses load from (front/back roll swaps views)
 STYLE = STYLES["walk"]
