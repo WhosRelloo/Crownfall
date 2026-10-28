@@ -15,11 +15,14 @@ def main():
     sheet = Image.open(path)
     fails = []
     for r, d in enumerate(W.ROWS):
-        base = W.pivoted(f"{src}/cf_human_m_full_rags_walk_{W.LABEL_FOR[d]}_frame01.png")
+        source = W.MIRROR.get(d, d)  # mirrored rows are checked against their flipped source
+        base = W.pivoted(f"{src}/cf_human_m_full_rags_walk_{W.LABEL_FOR[source]}_frame01.png")
         base_h = base.getbbox()[3] - base.getbbox()[1]
         for f in range(8):
-            W.frame(base, d, f)  # rebuild to learn where each boot pixel should be
+            W.frame(base, source, f)  # rebuild to learn where each boot pixel should be
             boots = [set(b) for b in W.LAST_BOOTS]
+            if source != d:
+                boots = [{(2 * W.PIVOT[0] - x, y) for x, y in b} for b in boots]
             fr = sheet.crop((f * 96, r * 96, f * 96 + 96, r * 96 + 96)).copy()
             px = fr.load()
             tag = f"{d} frame {f + 1}"

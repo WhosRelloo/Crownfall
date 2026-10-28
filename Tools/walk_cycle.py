@@ -704,6 +704,18 @@ def cleanup(im):
     return im
 
 
+# The east side is the west side mirrored, so both sides always match (Docs/Art-Spec.md section 3).
+MIRROR = {"E": "W", "NE": "NW", "SE": "SW"}
+
+
+def mirrored(im):
+    """Flip a frame left-right about the feet pivot (x = 48), not the cell centre, so the feet stay put."""
+    flipped = im.transpose(Image.FLIP_LEFT_RIGHT)  # x -> 95 - x
+    out = Image.new("RGBA", im.size, (0, 0, 0, 0))
+    out.alpha_composite(flipped, (2 * PIVOT[0] - (im.width - 1), 0))  # shift so x -> 96 - x
+    return out
+
+
 def pivoted(path):
     base = hard(Image.open(path).convert("RGBA"))
     cx, bottom = feet_centre(base)
@@ -724,10 +736,16 @@ def main():
     STYLE = STYLES[a.style]
 
     sheet = Image.new("RGBA", (CELL * 8, CELL * len(ROWS)), (0, 0, 0, 0))
-    for r, direction in enumerate(ROWS):
+    built = {}
+    for direction in ROWS:
+        if direction in MIRROR:
+            continue
         base = pivoted(f"{a.src_dir}/{a.prefix}_{LABEL_FOR[direction]}_frame01.png")
-        for i in range(8):
-            sheet.alpha_composite(frame(base, direction, i), (i * CELL, r * CELL))
+        built[direction] = [frame(base, direction, i) for i in range(8)]
+    for r, direction in enumerate(ROWS):
+        frames = built[direction] if direction not in MIRROR else [mirrored(f) for f in built[MIRROR[direction]]]
+        for i, f in enumerate(frames):
+            sheet.alpha_composite(f, (i * CELL, r * CELL))
     sheet.save(a.out)
     print(f"wrote {a.out}: {sheet.width} x {sheet.height}")
 
