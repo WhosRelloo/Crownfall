@@ -57,26 +57,26 @@
    }
   },
   "walk": {
-   "note": "uploaded 2026-10-27 5:31 PM as 8 strips (768x96); pixel counts match Art/Sprites/humanm/cf_humanm_full_rags_walk.png",
-   "S": 78627164929550,
-   "SW": 76736586081882,
-   "W": 89173701039656,
-   "NW": 140387225265342,
-   "N": 130937814930740,
-   "NE": 126049533991959,
-   "E": 110635237754967,
-   "SE": 82692421583733
+   "note": "uploaded 2026-10-27 7:23 PM (after the black-spot fix); checked in Studio",
+   "S": 106484660819753,
+   "SW": 96559634052373,
+   "W": 110243873048154,
+   "NW": 109047176703791,
+   "N": 129131814406601,
+   "NE": 131717595196711,
+   "E": 78807560011840,
+   "SE": 75239989873965
   },
   "run": {
-   "note": "uploaded 2026-10-27 5:18 PM as 8 strips (768x96); pixel counts match Art/Sprites/humanm/cf_humanm_full_rags_run.png",
-   "S": 116626209923087,
-   "SW": 107770828476982,
-   "W": 132584542976980,
-   "NW": 112155676937784,
-   "N": 137030515857935,
-   "NE": 136192886369643,
-   "E": 87205627224690,
-   "SE": 87188108632950
+   "note": "uploaded 2026-10-27 7:17 PM (after the black-spot fix); checked in Studio",
+   "S": 72152421354623,
+   "SW": 90521609780488,
+   "W": 104929602934605,
+   "NW": 79950080640854,
+   "N": 114419397061647,
+   "NE": 74761754773042,
+   "E": 92192337548778,
+   "SE": 111637685606463
   },
   "dodge": {
    "note": "uploaded 2026-10-27 6:47 PM as 8 strips (768x96); directions matched by pixel count and centre in Studio",
