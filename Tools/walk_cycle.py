@@ -22,11 +22,12 @@ Docs/Art-Spec.md: rows S, SW, W, NW, N, NE, E, SE; 8 frames of 96 x 96; feet on 
 hard alpha.
 """
 import argparse
+import json
 import math
+import os
 
 import numpy as np
 import colour_classes
-import female
 from PIL import Image
 
 ROWS = ["S", "SW", "W", "NW", "N", "NE", "E", "SE"]
@@ -121,6 +122,10 @@ HIP = 66  # first leg row after pivoting
 BOOT_ROWS = 9  # bottom rows of each leg that make up the boot; moved as one block, never rotated
 LAST_BLADE = set()  # where the sword pixels landed in the last frame built (cleanup leaves gaps by it)
 LAST_BOOTS = []  # where each boot pixel landed in the last frame built (read by Tools/walk_audit.py)
+# Where the whole-figure moves (the dodge roll's spin centre, its upside-down flip and its landing) are measured from
+# the figure's outline, a hairstyle would shift the body. Tools/hair_build.py records them on the bald body
+# (--motion-out) and replays them for every hairstyle (--motion-in), so hair layers line up with the bald body.
+MOTION = {"record": None, "fixed": None, "key": None}
 FAR_LEG_SHADE = 0.78  # side views: the far leg is this much darker than the near one
 
 # View kind per direction: front, back or side, and which way the character faces on screen (+1 right).
@@ -415,6 +420,7 @@ def posed_legs(labels, colour, i, cx, bottom, split_x, kind, facing, diagonal, b
 
 
 def frame(base, direction, i):
+    MOTION["key"] = f"{STYLE.get('name', '')}/{direction}/{i}"
     kind, facing = VIEW[direction]
     parts = PARTS[direction]
     diagonal = facing != 0 and kind != "side"
@@ -543,7 +549,7 @@ def frame(base, direction, i):
         if not isinstance(lab, tuple):
             lo, hi = span.get(y, (x, x))
             span[y] = (min(lo, x), max(hi, x))
-            if lab == "body":
+            if lab == "body" and y >= neck:
                 row_cloth.setdefault(y, []).append(colour[(x, y)])
     # One tone for the whole torso (a tone per row painted horizontal stripes).
     every = [c for cols in row_cloth.values() for c in cols]
@@ -691,7 +697,7 @@ def frame(base, direction, i):
     out = cleanup(out)
     if rolling:  # the cleanup may have trimmed the lowest stray pixel: set the frame on the floor again
         ground = PIVOT[1] - 1 - (STYLE["lift_seq"][i] if STYLE.get("lift_seq") else 0)
-        dy = ground - (out.getbbox()[3] - 1)
+        dy = _motion("reland", lambda: ground - (out.getbbox()[3] - 1))
         if dy:
             moved = Image.new("RGBA", out.size, (0, 0, 0, 0))
             moved.paste(out.crop((0, max(0, -dy), out.width, out.height)), (0, max(0, dy)))
@@ -700,6 +706,18 @@ def frame(base, direction, i):
             LAST_BLADE.clear()
             LAST_BLADE.update(shifted)
     return out
+
+
+def _motion(name, compute):
+    """A whole-figure measurement for this frame: replayed when fixed, else computed (and recorded)."""
+    key = f"{MOTION['key']}/{name}"
+    if MOTION["fixed"] is not None and key in MOTION["fixed"]:
+        value = MOTION["fixed"][key]
+        return tuple(value) if isinstance(value, list) else value
+    value = compute()
+    if MOTION["record"] is not None:
+        MOTION["record"][key] = value
+    return value
 
 
 def roll_and_land(layers, blades, kind, facing, diagonal, i, flip):
@@ -712,7 +730,7 @@ def roll_and_land(layers, blades, kind, facing, diagonal, i, flip):
         return layers, blades
     xs = [q[0] for q in whole]
     ys = [q[1] for q in whole]
-    centre = ((min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2)
+    centre = _motion("centre", lambda: ((min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2))
     moves = []
     roll = STYLE["roll_seq"][i] % 360 if (kind == "side" or diagonal) else 0
     if roll:
@@ -721,12 +739,12 @@ def roll_and_land(layers, blades, kind, facing, diagonal, i, flip):
         blades = set(transform({q: (0, 0, 0, 255) for q in blades}, centre, angle, 1.0, (0, 0)))
         moves.append(("rot", centre, angle))
     if flip:
-        top, low = min(y for x, y in whole), max(y for x, y in whole)
+        top, low = _motion("flip", lambda: (min(y for x, y in whole), max(y for x, y in whole)))
         whole = {(x, top + low - y): c for (x, y), c in whole.items()}
         blades = {(x, top + low - y) for x, y in blades}
         moves.append(("flip", top, low))
     ground = PIVOT[1] - 1 - STYLE["lift_seq"][i] if STYLE.get("lift_seq") else PIVOT[1] - 1
-    dy = ground - max(y for x, y in whole)
+    dy = _motion("land", lambda: ground - max(y for x, y in whole))
     whole = {(x, y + dy): c for (x, y), c in whole.items()}
     blades = {(x, y + dy) for x, y in blades}
     # boots follow the same moves, so the cleanup still protects their toe and heel tips
@@ -1013,8 +1031,14 @@ def base_for(direction):
     base = pivoted(f"{SRC['dir']}/{SRC['prefix']}_{LABEL_FOR[direction]}_frame01.png")
     if SRC.get("classes"):
         labels = split(base, PARTS[direction])
-        # the female's long hair runs past the hair line: Tools/female.py knows which pixels it painted as hair
-        extra = female.hair_pixels(direction) if SRC["prefix"].startswith("cf_human_f") else set()
+        # hair that runs past the drawing's hair line (long hair, hairstyles) comes as a mask beside the pose:
+        # <prefix>_<LABEL>_hairmask.png, white where the pixel is hair (Tools/female.py, Tools/hair_build.py)
+        extra = set()
+        mask_path = f"{SRC['dir']}/{SRC['prefix']}_{LABEL_FOR[direction]}_hairmask.png"
+        if os.path.exists(mask_path):
+            with Image.open(mask_path) as mask:
+                mpx = mask.convert("L").load()
+                extra = {(x, y) for y in range(mask.height) for x in range(mask.width) if mpx[x, y] > 127}
         base = colour_classes.tag(base, colour_classes.classify(base, labels, PARTS[direction]["hair"], HIP, extra))
     return base
 
@@ -1026,11 +1050,21 @@ def main():
     ap.add_argument("--prefix", default="cf_human_m_full_rags_walk")
     ap.add_argument("--style", default="walk", choices=sorted(STYLES))
     ap.add_argument("--classes", help="also write the colour-class map (see Tools/colour_classes.py) here")
+    ap.add_argument("--motion-out", help="record the whole-figure moves (roll centres, landings) to this JSON")
+    ap.add_argument("--motion-in", help="replay whole-figure moves recorded with --motion-out")
     a = ap.parse_args()
     global STYLE
     STYLE = STYLES[a.style]
     SRC["dir"], SRC["prefix"] = a.src_dir, a.prefix
+    if a.motion_in:
+        with open(a.motion_in) as fh:
+            MOTION["fixed"] = json.load(fh)
+    if a.motion_out:
+        MOTION["record"] = {}
     sheet = build_sheet()
+    if a.motion_out:
+        with open(a.motion_out, "w") as fh:
+            json.dump(MOTION["record"], fh)
     sheet.save(a.out)
     print(f"wrote {a.out}: {sheet.width} x {sheet.height}")
     if a.classes:
