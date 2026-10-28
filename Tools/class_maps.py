@@ -130,13 +130,17 @@ def write_maps(rig, pairs):
 
 
 def main():
+    """Since the hairstyles (Tools/hair_wire.py), the bodies are bald and their class maps come from the hairstyle
+    build; this only writes the colour sets. --legacy rebuilds the old haired sheets' maps (Art/Sprites) for reference."""
+    if "--legacy" not in sys.argv[1:]:
+        write_data()
+        return
     write_female = "--write-female" in sys.argv[1:]
     os.makedirs(OUT_MAPS, exist_ok=True)
     with tempfile.TemporaryDirectory() as scratch:
         src = os.path.join(scratch, "src")
         with zipfile.ZipFile(ZIP) as z:
             z.extractall(src)
-        # the zip may hold the frames in a subfolder
         for root, _, files in os.walk(src):
             if any(f.endswith("_frame01.png") for f in files):
                 src = root

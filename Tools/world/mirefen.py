@@ -86,15 +86,19 @@ def place_props(kind, depth, rng):
             if n >= count:
                 break
             x, y = int(rng.integers(40, W - 40)), int(rng.integers(60, H - 10))
-            if ok(x, y) and free(x, y, radius):
+            if ok(x, y) and clear(x, y) and free(x, y, radius):
                 variants = VARIANTS[pid]
                 placed.append((variants[int(rng.integers(len(variants)))], x, y, radius))
                 n += 1
 
-    clear = lambda x, y: d_shrine[y, x] > 130 and d_square[y, x] > 220
-    throw("tree_big", 26, 46, lambda x, y: land[y, x] and groves[y, x] and d_road[y, x] > 60 and d_water[y, x] > 60 and clear(x, y))
-    throw("tree_mid", 34, 38, lambda x, y: land[y, x] and d_road[y, x] > 50 and d_water[y, x] > 50 and clear(x, y))
-    throw("tree_moss", 22, 42, lambda x, y: land[y, x] and d_water[y, x] < 140 and d_water[y, x] > 48 and d_road[y, x] > 50 and clear(x, y))
+    for pid, x, y in FIXED:
+        placed.append((pid, x, y, 20))
+    bx, by = (BRIDGE[0] + BRIDGE[2]) / 2, (BRIDGE[1] + BRIDGE[3]) / 2
+    off_bridge = lambda x, y: abs(x - bx) > (BRIDGE[2] - BRIDGE[0]) / 2 + 24 or abs(y - by) > (BRIDGE[3] - BRIDGE[1]) / 2 + 24
+    clear = lambda x, y, r=220: d_shrine[y, x] > 130 and d_square[y, x] > r and off_bridge(x, y)
+    throw("tree_big", 26, 46, lambda x, y: land[y, x] and groves[y, x] and d_road[y, x] > 60 and d_water[y, x] > 60 and clear(x, y, 320))
+    throw("tree_mid", 34, 38, lambda x, y: land[y, x] and d_road[y, x] > 50 and d_water[y, x] > 50 and clear(x, y, 300))
+    throw("tree_moss", 22, 42, lambda x, y: land[y, x] and d_water[y, x] < 140 and d_water[y, x] > 48 and d_road[y, x] > 50 and clear(x, y, 310))
     throw("bush", 70, 18, lambda x, y: land[y, x] and d_road[y, x] > 22 and d_water[y, x] > 10 and clear(x, y))
     throw("bush_moss", 40, 14, lambda x, y: land[y, x] and d_road[y, x] > 20 and d_water[y, x] > 8)
     throw("rock", 26, 16, lambda x, y: land[y, x] and d_road[y, x] > 18)
@@ -139,6 +143,43 @@ for v in range(2):
     _kind(f"log_v{v}", lambda v=v: P.log(230 + v, 60 + 16 * v))
     _kind(f"lily_v{v}", lambda v=v: P.lilypad(240 + v), decal=True)
 _kind("lily_flower_v0", lambda: P.lilypad(250, True), decal=True)
+# hand-placed set pieces; a drawing that returns a list is its own animation
+_kind("shrine", P.shrine_frames, 3, block=14)
+for v in range(2):
+    _kind(f"barrel_v{v}", lambda v=v: P.barrel(310 + v), block=7)
+    _kind(f"produce_stall_v{v}", lambda v=v: P.produce_stall(330 + v), block=14)
+_kind("crates", lambda: P.crates(320), block=12)
+_kind("sacks", lambda: P.sacks(321))
+_kind("lantern", P.lantern_frames, 4, block=2)
+_kind("canopy_blue", lambda: P.canopy_frames(340, P.CLOTH_BLUE), 4)
+_kind("canopy_red", lambda: P.canopy_frames(341, P.CLOTH_RED), 4)
+_kind("produce_crates", lambda: P.produce_crates(342), block=14)
+_kind("weapon_rack", lambda: P.weapon_rack(343), block=10)
+_kind("armour_stand", lambda: P.armour_stand(344), block=5)
+_kind("banner_red", P.banner_red_frames, 4, block=2)
+_kind("wagon", lambda: P.wagon(345), block=20)
+_kind("bakery", lambda: P.bakery(346), block=12)
+_kind("pottery", lambda: P.pottery(347), block=8)
+_kind("fence", lambda: P.fence(348), block=8)
+_kind("mystic", P.mystic_frames, 4, block=22)
+
+SX, SY = 1820, 1000  # Halden's Ford square (SQUARE)
+FIXED = [
+    ("shrine", 360, 520), ("lantern", 330, 548), ("lantern", 392, 548),
+    # north row: the smith's canopy, two greengrocers, the fortune-teller
+    ("armour_stand", SX - 186, SY - 30), ("canopy_blue", SX - 120, SY - 40), ("weapon_rack", SX - 125, SY + 4),
+    ("produce_stall_v0", SX - 10, SY - 62), ("produce_crates", SX - 10, SY - 22),
+    ("pottery", SX + 62, SY - 40), ("mystic", SX + 130, SY - 46),
+    ("banner_red", SX - 200, SY - 84), ("banner_red", SX + 196, SY - 84),
+    # east: cooper's corner
+    ("crates", SX + 176, SY - 2), ("barrel_v0", SX + 172, SY + 26), ("barrel_v1", SX + 160, SY + 40),
+    # south row: the baker, a second canopy with produce, the pedlar's wagon
+    ("bakery", SX - 110, SY + 92), ("sacks", SX - 160, SY + 100), ("fence", SX - 176, SY + 56),
+    ("canopy_red", SX + 6, SY + 118),
+    ("wagon", SX + 122, SY + 104), ("barrel_v0", SX + 60, SY + 112),
+    ("lantern", SX - 50, SY + 44), ("lantern", SX + 66, SY + 40),
+]
+BRIDGE = (1140, 1042, 1202, 1092)  # plank deck where the Old Road crosses the stream (x0, y0, x1, y1)
 
 
 def pack_props(out_dir):
@@ -146,7 +187,10 @@ def pack_props(out_dir):
     frames = []
     for pid, (draw, n, amp, block, decal) in KINDS.items():
         img = draw()
-        seq = P.sway(img, n, amp) if n > 1 else [img]
+        if isinstance(img, list):
+            seq = img
+        else:
+            seq = P.sway(img, n, amp) if n > 1 else [img]
         for f, fr in enumerate(seq):
             frames.append((pid, f, fr))
     frames.sort(key=lambda t: -t[2].shape[0])
@@ -172,8 +216,130 @@ def pack_props(out_dir):
     kinds = {}
     for pid, (draw, n, amp, block, decal) in KINDS.items():
         r = rects[pid]
-        kinds[pid] = {"frames": [r[f] for f in range(n)], "fps": 3 if n > 1 else 0, "block": block, "decal": decal}
+        fps = 6 if isinstance(draw(), list) else 3
+        kinds[pid] = {"frames": [r[f] for f in range(n)], "fps": fps if n > 1 else 0, "block": block, "decal": decal}
     return kinds, len(atlases)
+
+
+COBBLE = [(52, 50, 50), (72, 68, 64), (94, 88, 80), (116, 108, 96), (138, 130, 114), (162, 154, 134)]
+
+
+def paint_square(img, kind):
+    """Halden's Ford square: a cobbled plaza. Stones on a jittered grid (each the cell of its nearest point), each
+    domed and lit from the top-left with its own tone, thin dark joints, moss creeping into joints at the edge."""
+    h, w = kind.shape
+    R = 270
+    x0, y0 = max(0, SQUARE[0] - R), max(0, SQUARE[1] - R)
+    x1, y1 = min(w, SQUARE[0] + R), min(h, SQUARE[1] + R)
+    yy, xx = np.mgrid[y0:y1, x0:x1]
+    wob = (G.fbm(h, w, 20, SEED + 50)[y0:y1, x0:x1] - 0.5) * 40
+    r = np.hypot(xx - SQUARE[0], (yy - SQUARE[1]) / 0.75) + wob
+    inside = r < 190
+    rng = np.random.default_rng(SEED + 51)
+    S = 8  # stone size, px
+    gh, gw = (y1 - y0) // S + 2, (x1 - x0) // S + 2
+    px = (np.arange(gw)[None, :] + 0.15 + rng.random((gh, gw)) * 0.7) * S
+    py = (np.arange(gh)[:, None] + 0.15 + rng.random((gh, gw)) * 0.7) * S
+    tone = rng.random((gh, gw))
+    ly, lx = yy - y0, xx - x0
+    cy, cx = ly // S, lx // S
+    best = np.full(ly.shape, 1e9)
+    second = np.full(ly.shape, 1e9)
+    own = np.zeros(ly.shape + (2,), dtype=np.int64)
+    for dy in (-1, 0, 1):
+        for dx in (-1, 0, 1):
+            gy, gx = np.clip(cy + dy, 0, gh - 1), np.clip(cx + dx, 0, gw - 1)
+            d = np.hypot(px[gy, gx] - lx, (py[gy, gx] - ly) * 1.15)
+            closer = d < best
+            second = np.where(closer, best, np.minimum(second, d))
+            best = np.where(closer, d, best)
+            own[closer] = np.stack([gy, gx], -1)[closer]
+    joint = (second - best) < 1.2
+    oy, ox = own[..., 0], own[..., 1]
+    ddx, ddy = (lx - px[oy, ox]) / (S * 0.6), (ly - py[oy, ox]) / (S * 0.6)
+    t = 2.6 + tone[oy, ox] * 1.6 - (ddx + ddy) * 0.9  # domed: lit top-left, shaded bottom-right
+    t = np.where((second - best) < 2.4, t - 0.8, t)    # stone edges round off into the joints
+    t = np.where(r > 160, t - (r - 160) / 30, t)        # worn and dirtier toward the edge
+    col = np.array(COBBLE, dtype=np.uint8)[np.clip(np.round(t).astype(int), 0, len(COBBLE) - 1)]
+    col[joint] = (34, 32, 30)
+    edge_moss = joint & (r > 140) & (rng.random(r.shape) < (r - 140) / 60)
+    col[edge_moss] = (52, 74, 34)
+    sub = img[y0:y1, x0:x1]
+    keep = inside & (kind[y0:y1, x0:x1] != G.WATER_K)
+    sub[keep, :3] = col[keep]
+    kind[y0:y1, x0:x1][keep] = G.MUD_K
+
+
+def paint_bridge(img, kind):
+    """A rustic footbridge where the Old Road crosses the stream: uneven boards laid across the way of travel (each its
+    own length and tone, a worn track down the middle, moss at the ends), a log rail on capped posts each side, and on
+    the near side the deck's edge beam and pilings standing in the water, with the deck's shadow on the stream."""
+    x0, y0, x1, y1 = BRIDGE
+    rng = np.random.default_rng(SEED + 60)
+    WD = P.WOOD
+    shade = lambda c, k: tuple(int(v * k) for v in c)
+    for x in range(x0 - 2, x1 + 3):  # the deck's shadow on the water below its near edge
+        for y in range(y1 + 1, y1 + 12):
+            if kind[y, x] == G.WATER_K:
+                img[y, x, :3] = shade(img[y, x, :3], 0.55 if y < y1 + 8 else 0.75)
+    mid = (y0 + y1) / 2
+    x = x0
+    while x <= x1:
+        bw = int(rng.integers(3, 6))
+        tone = 3.0 + rng.random() * 1.4
+        top, bot = y0 + 3 - int(rng.integers(0, 2)), y1 - 3 + int(rng.integers(0, 2))
+        cracked = rng.random() < 0.15
+        for bx in range(x, min(x + bw, x1 + 1)):
+            for y in range(top, bot + 1):
+                t = tone
+                if bx == x + bw - 1:
+                    t = 0.5  # the gap between boards
+                elif bx == x:
+                    t += 0.7  # lit edge
+                elif abs(y - mid) < (y1 - y0) * 0.22:
+                    t += 0.6  # worn track where feet go
+                if (y * 5 + bx * 3) % 11 == 0 and bx != x + bw - 1:
+                    t -= 0.8  # grain
+                if cracked and bx == x + 1 and abs(y - mid - 3) < 4:
+                    t = 0.8
+                if (y == top or y == bot) and rng.random() < 0.3:
+                    img[y, bx, :3] = P.MOSS[int(rng.random() * 3)]
+                    continue
+                img[y, bx, :3] = WD[max(0, min(len(WD) - 1, int(round(t))))]
+            img[top, bx, :3] = WD[5] if bx != x + bw - 1 else WD[1]
+        if bw > 3:  # nails over the joists
+            for ny in (y0 + 6, y1 - 6):
+                img[ny, x + 1, :3] = (156, 150, 140)
+        x += bw
+    def rail(y, near):
+        for yy, t in ((y, 4), (y + 1, 3), (y + 2, 1)):  # the log rail, lit on top
+            for xx in range(x0 - 1, x1 + 2):
+                img[yy, xx, :3] = WD[t] if (xx // 7) % 3 else WD[max(0, t - 1)]
+        for px in list(range(x0 - 1, x1 - 3, 15)) + [x1 - 3]:  # posts with round caps
+            for yy in range(y - 5, y + 4):
+                img[yy, px:px + 5, :3] = (WD[5], WD[4], WD[3], WD[2], WD[1])
+            img[y - 6, px + 1:px + 4, :3] = WD[5]
+            img[y - 5, px:px + 5, :3] = (WD[4], WD[5], WD[5], WD[4], WD[2])
+            if near:  # pilings down into the water, darker and wet toward the waterline
+                for yy in range(y + 4, y + 12):
+                    if kind[yy, px + 2] != G.WATER_K and yy > y + 6:
+                        break
+                    k = 1.0 if yy < y + 9 else 0.7
+                    img[yy, px:px + 5, :3] = (shade(WD[3], k), shade(WD[2], k), shade(WD[2], k), shade(WD[1], k), shade(WD[0], k))
+                else:
+                    img[y + 12, px - 1:px + 6, :3] = (150, 196, 196)  # ripple ring at the waterline
+    rail(y0, False)
+    for xx in range(x0 - 1, x1 + 2):  # near edge beam: the deck's side seen from the south
+        img[y1 - 1, xx, :3] = WD[3]
+        img[y1, xx, :3] = WD[1]
+        img[y1 + 1, xx, :3] = WD[0]
+    rail(y1 - 2, True)
+    for ex, side in ((x0 - 1, -1), (x1 + 1, 1)):  # worn, darker earth where the deck meets each bank
+        for y in range(y0 + 3, y1 - 2):
+            for k in range(1, 5):
+                xx = ex + side * k
+                if kind[y, xx] != G.WATER_K:
+                    img[y, xx, :3] = shade(img[y, xx, :3], 0.72 + k * 0.05)
 
 
 def main():
@@ -183,6 +349,10 @@ def main():
     kind, depth = G.terrain(H, W, SHAPES, SEED)
     img = G.paint(kind, depth, SEED)
     ripples = G.ripple_frames(kind, depth, SEED)
+    paint_square(img, kind)
+    paint_bridge(img, kind)
+    for r in ripples:  # no ripples on the deck or its shadow
+        r[BRIDGE[1] - 5:BRIDGE[3] + 7, BRIDGE[0]:BRIDGE[2] + 1, 3] = 0
     placements = place_props(kind, depth, rng)
     # flat props (lily pads) are painted into the ground: the ground is opaque, nothing lies on it see-through
     base = Image.fromarray(img)
@@ -216,7 +386,7 @@ def main():
     # preview: ground + props drawn back to front
     prev = Image.fromarray(img)
     prev.alpha_composite(Image.fromarray(ripples[0]))
-    drawn = {pid: KINDS[pid][0]() for pid in KINDS}
+    drawn = {pid: (lambda d: d[0] if isinstance(d, list) else d)(KINDS[pid][0]()) for pid in KINDS}
     for pid, x, y in sorted(placements, key=lambda t: t[2]):
         p = Image.fromarray(drawn[pid])
         prev.alpha_composite(p, (int(x - p.width / 2), int(y - p.height)))
