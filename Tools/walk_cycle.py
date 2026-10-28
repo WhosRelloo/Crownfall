@@ -76,12 +76,16 @@ STYLES["dodge"] = {  # a forward roll: crouch, dive, tuck and spin through a ful
     "arm_seq": [-25, 70, 110, 110, 110, 60, 10, -5],
     "roll_seq": [0, 0, 80, 170, 260, 330, 360, 360],
     "lift_seq": [0, 3, 0, 0, 0, 0, 0, 0],
-    # Front/back views: the body sinks into a ball over legs drawn up beneath it, forearms pulled in;
-    # mid-roll (frames 4-5) shows the opposite view upside down, as a forward roll toward you would.
-    "bob": [4, 8, 18, 22, 22, 14, 6, 1],
-    "legs_up": [2, 4, 8, 10, 10, 6, 2, 0],
-    "arm_tuck": [0.3, 1.0, 1.0, 1.0, 1.0, 1.0, 0.6, 0.2],
-    "front_flip": [False, False, False, True, True, False, False, False],
+    # Front/back views: the body sinks into a ball over legs drawn up beneath it, forearms pulled in and
+    # the head tucked down behind the shoulders. Mid-roll (frames 3-5) shows the other side of him as a
+    # round hunched back (right side up), the way a roll toward or away from the camera looks.
+    "bob": [4, 10, 17, 20, 18, 14, 6, 1],  # the ball keeps moving: deepest in the middle frame
+    "legs_up": [2, 4, 10, 14, 14, 8, 3, 0],
+    "head_tuck": [0, 2, 2, 4, 3, 2, 1, 0],  # enough to drop the face away, not so much the top goes flat
+    "cloth_gather": [0, 0, 6, 12, 9, 4, 0, 0],  # px the tunic/cloak rides up behind the ball
+    # In the ball the arms wrap low around the knees (pulled high, they made square corners)
+    "arm_tuck": [0.3, 1.0, 0.4, 0.4, 0.4, 1.0, 0.6, 0.2],
+    "front_swap": [False, False, True, True, True, False, False, False],
     "airborne": [],
     "stance": [],
     "stride": {"side": 0, "diagonal": 0, "front": 0},
@@ -393,8 +397,8 @@ def frame(base, direction, i):
     kind, facing = VIEW[direction]
     parts = PARTS[direction]
     diagonal = facing != 0 and kind != "side"
-    flip = bool(STYLE.get("front_flip")) and kind in ("front", "back") and not diagonal and STYLE["front_flip"][i]
-    if flip:  # mid-roll toward/away from the camera shows the opposite side, upside down
+    flip = bool(STYLE.get("front_swap")) and kind in ("front", "back") and not diagonal and STYLE["front_swap"][i]
+    if flip:  # mid-roll toward/away from the camera shows the other side of him (right side up)
         other = "N" if direction == "S" else "S"
         base = pivoted(f"{SRC['dir']}/{SRC['prefix']}_{LABEL_FOR[other]}_frame01.png")
         parts = PARTS[other]
@@ -495,11 +499,19 @@ def frame(base, direction, i):
     rising = bob < prev_bob
     top = min(y for (x, y), lab in labels.items() if lab == "body")
     body = {}
+    head = {}  # a tucked head (dodge, front/back views) goes behind the shoulders
+    tuck = STYLE["head_tuck"][i] if STYLE.get("head_tuck") and kind in ("front", "back") and not diagonal else 0
+    neck = parts["hair"] + 6
     for (x, y), lab in labels.items():
         if lab != "body":
             continue
         dx = -facing if (kind == "side" and rising and y <= top + 1) else 0
-        body[(x + dx, y + bob)] = colour[(x, y)]
+        if tuck and y <= neck:
+            head[(x + dx, y + bob + tuck)] = colour[(x, y)]
+        else:
+            body[(x + dx, y + bob)] = colour[(x, y)]
+    if head:
+        layers.append(head)
     # Where an arm moved off the body, show shadowed torso behind it: the torso's middle cloth tone,
     # 15% darker (the darkest tones read as black spots). A copy of the arm
     # itself would leave a ghost second arm behind the swinging one.
@@ -544,7 +556,18 @@ def frame(base, direction, i):
         for k in range(0, dx + step, step) if dx else (0,):
             cloak.setdefault((x + k, y + dy), colour[(x, y)])
         cloak[(x + dx, y + dy)] = colour[(x, y)]
-    layers.append(cloak)
+    gather = STYLE["cloth_gather"][i] if STYLE.get("cloth_gather") and kind in ("front", "back") and not diagonal else 0
+    if gather:  # the cloth bunches up behind the tucked body instead of hanging below it like a skirt
+        # It is behind him, so only what falls inside the body's outline on each row can show.
+        rows = {}
+        for (x, y) in list(body) + list(head):
+            lo, hi = rows.get(y, (x, x))
+            rows[y] = (min(lo, x), max(hi, x))
+        gathered = {(x, y - gather): c for (x, y), c in cloak.items()}
+        layers.insert(body_index, {(x, y): c for (x, y), c in gathered.items()
+                                   if y in rows and rows[y][0] <= x <= rows[y][1]})
+    else:
+        layers.append(cloak)
 
     # Arms and swords.
     behind = []  # arm pieces drawn behind the body (a run arm swung away from the camera)
@@ -631,7 +654,7 @@ def frame(base, direction, i):
     layers[0] = {(x, y): c for (x, y), c in layers[0].items() if y in span and span[y][0] <= x <= span[y][1]}
 
     if rolling:
-        layers, blades = roll_and_land(layers, blades, kind, facing, diagonal, i, flip)
+        layers, blades = roll_and_land(layers, blades, kind, facing, diagonal, i, False)
 
     LAST_BLADE.clear()
     LAST_BLADE.update(blades)
