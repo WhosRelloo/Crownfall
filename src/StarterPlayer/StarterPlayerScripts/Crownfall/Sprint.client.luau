@@ -15,6 +15,10 @@ RunService.Heartbeat:Connect(function()
 	if not humanoid then
 		return
 	end
+	if player:GetAttribute("InMenu") then -- a menu (the character creator) is open: stand still
+		humanoid.WalkSpeed = 0
+		return
+	end
 	local sprinting = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
 	humanoid.WalkSpeed = if sprinting then Config.Movement.SprintSpeed else Config.Movement.WalkSpeed
 end)

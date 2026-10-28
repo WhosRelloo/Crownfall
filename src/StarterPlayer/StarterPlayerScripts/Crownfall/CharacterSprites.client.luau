@@ -4,14 +4,16 @@ local RunService = game:GetService("RunService")
 local RS = game:GetService("ReplicatedStorage")
 
 local Config = require(RS.Crownfall.Shared.Config)
+local Appearance = require(RS.Crownfall.Shared.Appearance)
 local Render = RS.Crownfall.Render
 local SpriteCard = require(Render.SpriteCard)
 local SheetMath = require(Render.SheetMath)
 local Facing = require(Render.Facing)
 local CameraMath = require(Render.CameraMath)
 
-local artModule = Render:FindFirstChild("Art") and Render.Art:FindFirstChild(Config.Render.Art)
-local art = require(artModule or Render.HeroSprite)
+local Arts = require(Render.Arts)
+local art = Arts.Default
+local artFor = Arts.For
 
 -- Load every animation image up front, so switching to an animation (walk -> run) never shows a
 -- blank frame while its image downloads.
@@ -37,7 +39,7 @@ local folder = Instance.new("Folder")
 folder.Name = "CrownfallSprites"
 folder.Parent = workspace
 
-local tracked = {} -- [character Model] = { card, direction, anim, startedAt }
+local tracked = {} -- [character Model] = { card, direction, anim, startedAt, look }
 
 local function hide(inst: Instance)
 	if inst:IsA("BasePart") or inst:IsA("Decal") then
@@ -53,13 +55,29 @@ local function untrack(character: Model)
 	end
 end
 
+-- Paints a tracked character with its player's look; a new body needs a new card (different art).
+local function applyLook(t, player: Player?)
+	local look = Appearance.Decode(player and player:GetAttribute("Appearance"))
+	local want = artFor(look.body)
+	if not t.card or t.card.art ~= want then
+		if t.card then
+			t.card:Destroy()
+		end
+		t.card = SpriteCard.new(want, folder)
+	end
+	t.look = look
+	t.card:SetLook(look)
+end
+
 local function track(character: Model)
 	untrack(character)
 	for _, d in ipairs(character:GetDescendants()) do
 		hide(d)
 	end
 	character.DescendantAdded:Connect(hide)
-	tracked[character] = { card = SpriteCard.new(art, folder), direction = "S", anim = "idle", startedAt = os.clock() }
+	local t = { direction = "S", anim = "idle", startedAt = os.clock() }
+	applyLook(t, Players:GetPlayerFromCharacter(character))
+	tracked[character] = t
 end
 
 local function watch(player: Player)
@@ -68,6 +86,12 @@ local function watch(player: Player)
 	end
 	player.CharacterAdded:Connect(track)
 	player.CharacterRemoving:Connect(untrack)
+	player:GetAttributeChangedSignal("Appearance"):Connect(function()
+		local t = player.Character and tracked[player.Character]
+		if t then
+			applyLook(t, player)
+		end
+	end)
 end
 
 for _, p in ipairs(Players:GetPlayers()) do
@@ -91,6 +115,7 @@ RunService:BindToRenderStep("CrownfallSprites", Enum.RenderPriority.Camera.Value
 		local frame
 		local dodgeStart = character:GetAttribute("DodgeStart")
 		local sinceDodge = dodgeStart and workspace:GetServerTimeNow() - dodgeStart
+		local art = t.card.art
 		if art.Anims.dodge and sinceDodge and sinceDodge >= 0 and sinceDodge < Config.Movement.DodgeTime then
 			-- a dodge roll: timed on the server clock so every client shows the same frame
 			anim = "dodge"

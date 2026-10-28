@@ -2,6 +2,7 @@
 -- Works with both art kinds: "Rows" (placeholder drawn in code) and "Sheet" (uploaded sprite sheets).
 local PixelArt = require(script.Parent.PixelArt)
 local SheetMath = require(script.Parent.SheetMath)
+local Recolour = require(script.Parent.Recolour)
 
 local ROWS_CANVAS_SCALE = 8 -- SurfaceGui pixels per placeholder pixel
 local SHEET_CANVAS_SCALE = 4 -- SurfaceGui pixels per sheet pixel
@@ -45,14 +46,25 @@ function SpriteCard.new(art, parent: Instance)
 	return setmetatable({ part = part, gui = gui, image = image, art = art, shown = nil, pivot = art.Pivot }, SpriteCard)
 end
 
+-- Paints this card with a look (Shared/Appearance); nil shows the drawn colours.
+function SpriteCard:SetLook(look)
+	self.look = look
+	self.shown = nil
+	if look and self.art.Kind == "Sheet" then
+		Recolour.Prepare(self.art, look)
+	end
+end
+
 -- Shows frame `frame` (1-based) of `anim` facing `direction`. Missing animations fall back to idle.
+-- With a look set, shows the repainted image once it is baked and the drawn one until then.
 function SpriteCard:Show(direction: string, anim: string, frame: number)
 	local art = self.art
 	if not art.Anims[anim] then
 		anim = "idle"
 		frame = 1
 	end
-	local key = direction .. "/" .. anim .. "/" .. frame
+	local painted = art.Kind == "Sheet" and self.look and Recolour.Get(art, self.look, anim, direction)
+	local key = direction .. "/" .. anim .. "/" .. frame .. (if painted then "*" else "")
 	if key == self.shown then
 		return
 	end
@@ -61,7 +73,8 @@ function SpriteCard:Show(direction: string, anim: string, frame: number)
 	if art.Kind == "Sheet" then
 		local def = art.Anims[anim]
 		local rect = SheetMath.Rect(def, direction, frame, art.Cell, art.Pivot)
-		self.image.Image = SheetMath.Image(def, direction) or art.Layers.full[art.Outfit][anim]
+		self.image.ImageContent = painted
+			or Content.fromUri(SheetMath.Image(def, direction) or art.Layers.full[art.Outfit][anim])
 		self.image.ImageRectOffset = rect.Offset
 		self.image.ImageRectSize = rect.Size
 		self.pivot = rect.Pivot

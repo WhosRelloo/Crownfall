@@ -25,6 +25,7 @@ import argparse
 import math
 
 import numpy as np
+import colour_classes
 from PIL import Image
 
 ROWS = ["S", "SW", "W", "NW", "N", "NE", "E", "SE"]
@@ -271,14 +272,18 @@ def split(base, parts):
 def scale2x(img):
     """EPX / Scale2x on an (h, w) array of packed RGBA ints: doubles size, keeps pixel-art edges crisp."""
     p = img
-    a = np.pad(p, ((1, 0), (0, 0)), mode="edge")[:-1]   # above
-    d = np.pad(p, ((0, 1), (0, 0)), mode="edge")[1:]    # below
-    c = np.pad(p, ((0, 0), (1, 0)), mode="edge")[:, :-1]  # left
-    b = np.pad(p, ((0, 0), (0, 1)), mode="edge")[:, 1:]   # right
-    e0 = np.where((c == a) & (c != d) & (a != b), c, p)
-    e1 = np.where((a == b) & (a != c) & (b != d), a, p)
-    e2 = np.where((d == c) & (d != b) & (c != a), d, p)
-    e3 = np.where((b == d) & (b != a) & (d != c), b, p)
+    # Edges are found by comparing colours only: the alpha byte can carry a colour class (--classes), which
+    # must not change the result. Opaque/transparent still differ (bit 24).
+    k = (p >> 8) | ((p & 0xFF) > 0).astype(p.dtype) << 24
+    def around(v):  # above, below, left, right
+        return (np.pad(v, ((1, 0), (0, 0)), mode="edge")[:-1], np.pad(v, ((0, 1), (0, 0)), mode="edge")[1:],
+                np.pad(v, ((0, 0), (1, 0)), mode="edge")[:, :-1], np.pad(v, ((0, 0), (0, 1)), mode="edge")[:, 1:])
+    a, d, c, b = around(k)
+    pa, pd, pc, pb = around(p)
+    e0 = np.where((c == a) & (c != d) & (a != b), pc, p)
+    e1 = np.where((a == b) & (a != c) & (b != d), pa, p)
+    e2 = np.where((d == c) & (d != b) & (c != a), pd, p)
+    e3 = np.where((b == d) & (b != a) & (d != c), pb, p)
     out = np.empty((p.shape[0] * 2, p.shape[1] * 2), dtype=p.dtype)
     out[0::2, 0::2], out[0::2, 1::2], out[1::2, 0::2], out[1::2, 1::2] = e0, e1, e2, e3
     return out
@@ -404,7 +409,7 @@ def frame(base, direction, i):
     flip = bool(STYLE.get("front_swap")) and kind in ("front", "back") and not diagonal and STYLE["front_swap"][i]
     if flip:  # mid-roll toward/away from the camera shows the other side of him (right side up)
         other = "N" if direction == "S" else "S"
-        base = pivoted(f"{SRC['dir']}/{SRC['prefix']}_{LABEL_FOR[other]}_frame01.png")
+        base = base_for(other)
         parts = PARTS[other]
     p = 2 * math.pi * i / 8
     px = base.load()
@@ -531,7 +536,9 @@ def frame(base, direction, i):
     # One tone for the whole torso (a tone per row painted horizontal stripes).
     every = [c for cols in row_cloth.values() for c in cols]
     tone = cloth_tone(every) if every else None
-    shade = (int(tone[0] * 0.85), int(tone[1] * 0.85), int(tone[2] * 0.85), tone[3]) if tone else None
+    # (with --classes the shadow is torso cloth, whichever pixel its tone was taken from)
+    alpha = tone and (tone[3] if tone[3] == 255 else 255 - colour_classes.OUTFIT)
+    shade = (int(tone[0] * 0.85), int(tone[1] * 0.85), int(tone[2] * 0.85), alpha) if tone else None
     shadow = {y: shade for y in row_cloth}
     for (x, y), lab in labels.items():
         if not isinstance(lab, tuple) or lab[0] != "arm" or y not in span:  # arms only, never the sword
@@ -675,7 +682,7 @@ def frame(base, direction, i):
         dy = ground - (out.getbbox()[3] - 1)
         if dy:
             moved = Image.new("RGBA", out.size, (0, 0, 0, 0))
-            moved.alpha_composite(out, (0, max(0, dy)), (0, max(0, -dy)))
+            moved.paste(out.crop((0, max(0, -dy), out.width, out.height)), (0, max(0, dy)))
             out = moved
             shifted = {(x, y + dy) for x, y in LAST_BLADE}
             LAST_BLADE.clear()
@@ -976,7 +983,7 @@ def mirrored(im):
     """Flip a frame left-right about the feet pivot (x = 48), not the cell centre, so the feet stay put."""
     flipped = im.transpose(Image.FLIP_LEFT_RIGHT)  # x -> 95 - x
     out = Image.new("RGBA", im.size, (0, 0, 0, 0))
-    out.alpha_composite(flipped, (2 * PIVOT[0] - (im.width - 1), 0))  # shift so x -> 96 - x
+    out.paste(flipped, (2 * PIVOT[0] - (im.width - 1), 0))  # shift so x -> 96 - x
     return out
 
 
@@ -989,30 +996,58 @@ def pivoted(path):
     return moved
 
 
+def base_for(direction):
+    """The pivoted base drawing for a direction; with --classes, each pixel's colour class rides in its alpha."""
+    base = pivoted(f"{SRC['dir']}/{SRC['prefix']}_{LABEL_FOR[direction]}_frame01.png")
+    if SRC.get("classes"):
+        labels = split(base, PARTS[direction])
+        base = colour_classes.tag(base, colour_classes.classify(base, labels, PARTS[direction]["hair"], HIP))
+    return base
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("src_dir")
     ap.add_argument("out")
     ap.add_argument("--prefix", default="cf_human_m_full_rags_walk")
     ap.add_argument("--style", default="walk", choices=sorted(STYLES))
+    ap.add_argument("--classes", help="also write the colour-class map (see Tools/colour_classes.py) here")
     a = ap.parse_args()
     global STYLE
     STYLE = STYLES[a.style]
     SRC["dir"], SRC["prefix"] = a.src_dir, a.prefix
+    sheet = build_sheet()
+    sheet.save(a.out)
+    print(f"wrote {a.out}: {sheet.width} x {sheet.height}")
+    if a.classes:
+        SRC["classes"] = True
+        tagged, classes = colour_classes.untag(build_sheet())
+        # the class run must move every pixel exactly as the plain run did
+        assert tagged.tobytes() == sheet.tobytes(), "class tagging changed the sheet"
+        assert all(classes.values()), "a pixel lost its class"
+        out = Image.new("L", sheet.size, 0)
+        opx = out.load()
+        for q, k in classes.items():
+            opx[q] = k
+        out.save(a.classes)
+        print(f"wrote {a.classes}")
 
+
+def build_sheet():
+
+    LAST_BLADE.clear()
     sheet = Image.new("RGBA", (CELL * 8, CELL * len(ROWS)), (0, 0, 0, 0))
     built = {}
     for direction in ROWS:
         if direction in MIRROR:
             continue
-        base = pivoted(f"{a.src_dir}/{a.prefix}_{LABEL_FOR[direction]}_frame01.png")
+        base = base_for(direction)
         built[direction] = [frame(base, direction, i) for i in range(8)]
     for r, direction in enumerate(ROWS):
         frames = built[direction] if direction not in MIRROR else [mirrored(f) for f in built[MIRROR[direction]]]
         for i, f in enumerate(frames):
-            sheet.alpha_composite(f, (i * CELL, r * CELL))
-    sheet.save(a.out)
-    print(f"wrote {a.out}: {sheet.width} x {sheet.height}")
+            sheet.paste(f, (i * CELL, r * CELL))
+    return sheet
 
 
 if __name__ == "__main__":

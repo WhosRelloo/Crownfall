@@ -104,9 +104,75 @@ Before the opening cutscene, as the blueprint says.
 
 ---
 
-## 4. Decisions needed from you
+## 4. Phase A: what is built (2026-10-27)
 
-1. **ID verification:** runtime recolouring needs the place owner to be 13+, ID-verified, and to turn on **Enable Mesh / Image APIs** in the Creator Dashboard. Can you do that? If not, colour changes are limited to tinting separate light-grey layers, which needs Phase B art first.
+**In the game now**
+- **Creator screen** (`CharacterCreator.client`). It opens on first join and C reopens it until the Barber and Tailor exist.
+  - 8 presets, randomize all, and a Roll button per row.
+  - Body choice. Female is shown but locked until her art is in (section 5).
+  - Swatches: 8 skin, 12 hair, 11 outfit (undyed + 10 dyes).
+  - A 4× live preview that turns through all 8 directions and plays idle, walk, sprint and dodge.
+  - Begin / Save look and Cancel. The character stands still while it is open.
+- **Saving and sharing** (`Appearance.server`). The look is saved in the `CrownfallAppearance_v1` DataStore as one short string (`m:tan:copper:linen`). It rides on the Player as the `Appearance` attribute, so every client paints every player the same way.
+- **Recolouring** (`Render/Recolour`).
+  - Each image is downloaded once and its pixels kept.
+  - For each look, each image is repainted with an EditableImage and baked with `CreateDataModelContentAsync`, then the EditableImage is freed.
+  - Measured in Studio: about 3.8 s for the first look (downloads), then about 1 s for each further look (25 images).
+  - The drawn image shows until its painted copy is ready.
+
+**How a pixel knows what it is**
+- `Tools/colour_classes.py` sorts each pixel of the base drawings into one of six classes:
+
+  | Class | Recoloured? |
+  | --- | --- |
+  | outline | no |
+  | steel | no |
+  | skin | yes |
+  | hair | yes |
+  | outfit | yes |
+  | boots | no |
+
+- `walk_cycle.py --classes` carries the class through every move in the pixel's alpha byte. That gives a class map for walk, run and dodge that lines up exactly with the uploaded sheets. The build checks the sheets come out byte-identical, so nothing needs re-uploading.
+- The uploaded idle sheet isn't in the repo, so the game classifies it itself from colour and height bands (`ClassMap.ClassifyUpright`). That works because the idle stands upright.
+
+**How a pixel is repainted**
+- Its brightness, placed within its class's range, picks a point along the chosen 5-stop ramp, so the original shading is kept.
+- Outfit dye fades out on saturated pixels, so leather straps, belts and bracers keep their colour.
+- `Tools/recolour.py` does the same maths in Python for previews. A spec checks the Luau and Python results agree.
+
+**Changed from the plan**
+- **Eye colour is dropped.** The eyes sit in shadow under the hair and aren't visible at sprite size.
+- **The Brand mark comes next.** It needs a small glow layer placed per direction.
+- **Origin and name** wait for the story systems.
+
+**Rebuilding the data**
+- After changing `Art/Sprites/palettes.json` or any walk/run/dodge art, run `python Tools/class_maps.py`.
+
+## 5. Female body: the art it needs
+
+The female body plugs into the same system. Her colour options, presets and recolouring all work unchanged. To build her walk, sprint and dodge, `Tools/walk_cycle.py` needs the same inputs it used for the male:
+
+1. **Base poses: one standing drawing per direction for 5 directions (S, SW, W, NW, N).** The east side is mirrored from the west.
+   - **Size and scale:** 96 × 96 px PNG, transparent background, hard edges (no soft or half-transparent pixels), with feet at the bottom centre and the same scale as the male (about 60 px tall).
+   - **Pose:** the same as the male's walk frame 1:
+     - sword in the same hand, hanging at the side;
+     - arms a little away from the torso;
+     - feet slightly apart;
+     - hair clear of the shoulders where possible, so it can be recoloured cleanly.
+   - **Outfit and colours:** the same rags outfit, in the same dark-brown cloth, tan skin, dark hair and brown leather family as the male. Recolouring keys off these colour families.
+   - Named like the male zip, e.g. `cf_human_f_full_rags_walk_S_frame01.png`. Only frame 1 is needed; the tool animates the rest.
+2. **Idle sheet:** 8 directions × 4 frames, 96 px cells, laid out like the male idle (768 × 384, 2 directions per row). Hard edges.
+
+When those arrive:
+1. I map her parts (arms, sword, cloak, hair line) for each direction.
+2. I build MWalk / MRun / MDodge equivalents named FWalk, FRun and FDodge, run the same audits, and generate her class maps.
+3. You upload them and I add `Render/Art/humanf.luau`.
+
+The Female button unlocks by itself once that file exists.
+
+## 6. Decisions needed from you
+
+1. ~~ID verification~~: done. The Mesh / Image APIs are on.
 2. **Layered art:** for hairstyles, outfits and a female body, can your art pipeline produce each direction as **separate images**: body (skin + underclothes), hair, outfit, weapon? These must be on the same 96 px grid with the same pose. I'll write the exact layer spec for the artist or generator.
 3. **Launch scope:** is the Phase A + B list above the right size, or do you want more or fewer options?
 

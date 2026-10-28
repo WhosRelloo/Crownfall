@@ -62,7 +62,7 @@ local function roll()
 end
 
 UserInputService.InputBegan:Connect(function(input, processed)
-	if not processed and input.KeyCode == Enum.KeyCode.Q then
+	if not processed and input.KeyCode == Enum.KeyCode.Q and not Players.LocalPlayer:GetAttribute("InMenu") then
 		roll()
 	end
 end)
