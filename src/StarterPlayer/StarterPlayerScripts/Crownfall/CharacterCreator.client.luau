@@ -1,12 +1,17 @@
--- The character creator (Docs/Character-Customization.md): presets first, then edit anything, with a large
--- animated preview you can turn through all 8 directions. Opens on first join (until a look is confirmed);
--- C reopens it for now, until the Barber and Tailor exist.
+-- The character creator (Docs/Character-Customization.md, Docs/Plans/2026-10-28-class-origin-traits-hair.md):
+-- four steps (Look, Class, Origin, Traits) around a large animated preview you can turn through all 8 directions.
+-- Opens on first join (until the creator is finished once). C reopens it for now, as a stand-in for the shrine,
+-- Barber and Tailor: look and class only, since origin and traits are fixed once chosen.
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local RS = game:GetService("ReplicatedStorage")
 
 local Appearance = require(RS.Crownfall.Shared.Appearance)
+local Classes = require(RS.Crownfall.Shared.Classes)
+local Origins = require(RS.Crownfall.Shared.Origins)
+local Traits = require(RS.Crownfall.Shared.Traits)
+local Profile = require(RS.Crownfall.Shared.Profile)
 local Render = RS.Crownfall.Render
 local Arts = require(Render.Arts)
 local Recolour = require(Render.Recolour)
@@ -36,6 +41,8 @@ local C = {
 	text = Color3.fromRGB(233, 221, 196),
 	muted = Color3.fromRGB(150, 136, 114),
 	edge = Color3.fromRGB(58, 48, 38),
+	good = Color3.fromRGB(138, 196, 120),
+	bad = Color3.fromRGB(214, 112, 96),
 }
 local TITLE = Enum.Font.Fondamento
 local BODY = Enum.Font.BuilderSansMedium
@@ -116,7 +123,8 @@ end
 local look = Appearance.Decode(player:GetAttribute("Appearance"))
 local direction, anim, animStarted = "S", "idle", os.clock()
 local gui: ScreenGui? = nil
-local refreshers = {} -- functions that redraw selection state after the look changes
+local refreshers = {} -- functions that redraw selection state after a choice changes
+local choice = { class = Classes.Default, origin = Origins.Default, traits = {} } -- the non-look picks
 -- While a menu is open the character stands still (Sprint.client holds walk speed at 0) and can't jump.
 local function holdStill(on: boolean)
 	player:SetAttribute("InMenu", if on then true else nil)
@@ -126,12 +134,62 @@ local function holdStill(on: boolean)
 	end
 end
 
+local function refresh()
+	for _, r in ipairs(refreshers) do
+		r()
+	end
+end
+
 local function setLook(newLook)
 	look = Appearance.Sanitize(newLook)
-	for _, refresh in ipairs(refreshers) do
-		refresh()
-	end
+	refresh()
 	Recolour.Prepare(Arts.For(look.body), look)
+end
+
+local function sectionTitle(parent: Instance, text: string, x: number, y: number)
+	return label({ Parent = parent, Text = string.upper(text), Font = BOLD, TextSize = 13, TextColor3 = C.muted,
+		Position = UDim2.fromOffset(x, y), Size = UDim2.fromOffset(240, 18) })
+end
+
+-- A column of pick buttons; isOn(item) says which are selected, onPick(item) handles a click.
+local function pickList(parent: Instance, items, opts)
+	local buttons = {}
+	for i, item in ipairs(items) do
+		local b = button({ Name = opts.prefix .. item.Id, Parent = parent, Text = "",
+			Position = UDim2.fromOffset(12, opts.top + (i - 1) * opts.step), Size = UDim2.fromOffset(226, opts.height) })
+		label({ Parent = b, Text = item.Name, Font = TITLE, TextSize = opts.titleSize or 20,
+			Position = UDim2.fromOffset(12, if opts.sub then 6 else 0), Size = UDim2.fromOffset(204, if opts.sub then 28 else opts.height) })
+		if opts.sub then
+			label({ Parent = b, Text = opts.sub(item), TextSize = 13, TextColor3 = C.muted,
+				Position = UDim2.fromOffset(12, opts.height - 26), Size = UDim2.fromOffset(204, 16) })
+		end
+		b.MouseButton1Click:Connect(function()
+			opts.onPick(item)
+			refresh()
+		end)
+		if opts.onHover then
+			b.MouseEnter:Connect(function()
+				opts.onHover(item)
+			end)
+		end
+		buttons[item.Id] = b
+	end
+	table.insert(refreshers, function()
+		for _, item in ipairs(items) do
+			local b, on = buttons[item.Id], opts.isOn(item)
+			b:SetAttribute("Selected", on)
+			b:FindFirstChildOfClass("UIStroke").Color = if on then C.gold else C.edge
+		end
+	end)
+	return buttons
+end
+
+-- "Label: value" rows for a card.
+local function factRow(parent: Instance, y: number, name: string, value: string)
+	label({ Parent = parent, Text = name, TextSize = 14, TextColor3 = C.muted, Position = UDim2.fromOffset(18, y),
+		Size = UDim2.fromOffset(110, 20) })
+	return label({ Parent = parent, Text = value, Font = BOLD, TextSize = 15, Position = UDim2.fromOffset(128, y),
+		Size = UDim2.fromOffset(196, 20), TextTruncate = Enum.TextTruncate.AtEnd })
 end
 
 -- Building the screen ----------------------------------------------------------------------------------------
@@ -223,12 +281,38 @@ local function build(firstTime: boolean)
 	local fitConn = (workspace.CurrentCamera :: Camera):GetPropertyChangedSignal("ViewportSize"):Connect(fit)
 
 	label({ Parent = root, Text = if firstTime then "Forge your wanderer" else "Change your look",
-		Font = TITLE, TextSize = 40, TextColor3 = C.gold, Size = UDim2.fromOffset(700, 46) })
-	label({ Parent = root, Text = "Start from a look below, then make it yours. Hair and dyes can be changed later in town.",
-		TextSize = 16, TextColor3 = C.muted, Position = UDim2.fromOffset(2, 46), Size = UDim2.fromOffset(900, 20) })
+		Font = TITLE, TextSize = 40, TextColor3 = C.gold, Size = UDim2.fromOffset(520, 46) })
+	local subtitle = label({ Parent = root, Text = "", TextSize = 16, TextColor3 = C.muted,
+		Position = UDim2.fromOffset(2, 46), Size = UDim2.fromOffset(760, 20) })
+
+	-- Steps: each shows its own left and right panels; the preview in the middle stays.
+	local STEPS = if firstTime
+		then { { "look", "Look" }, { "class", "Class" }, { "origin", "Origin" }, { "traits", "Traits" } }
+		else { { "look", "Look" }, { "class", "Class" } }
+	local HINTS = {
+		look = "Start from a look, then make it yours. Hair and dyes can be changed later in town.",
+		class = "Your starting role and kit. You can switch class at any shrine.",
+		origin = "Where you come from, and where you wake after the opening. This stays with you.",
+		traits = "Pick " .. Traits.Pick .. ". Each has an upside and a cost. These stay with you.",
+	}
+	local step = 1
+	local stepPanels = {} -- [step id] = { panels }
+	local stepTabs = {}
+	for i, s in ipairs(STEPS) do
+		local tab = button({ Name = "Step_" .. s[1], Parent = root, Text = i .. "  " .. s[2], TextSize = 15,
+			Position = UDim2.fromOffset(1120 - (#STEPS - i + 1) * 112 + 8, 10), Size = UDim2.fromOffset(104, 34) })
+		stepTabs[i] = tab
+	end
+	for _, id in ipairs({ "look", "class", "origin", "traits" }) do
+		stepPanels[id] = {}
+	end
+	local function own(stepId: string, inst: Instance)
+		table.insert(stepPanels[stepId], inst)
+		return inst
+	end
 
 	-- Presets (left)
-	local presets = panel({ Name = "Presets", Parent = root, Position = UDim2.fromOffset(0, 84), Size = UDim2.fromOffset(250, 576) })
+	local presets = own("look", panel({ Name = "Presets", Parent = root, Position = UDim2.fromOffset(0, 84), Size = UDim2.fromOffset(250, 576) }))
 	label({ Parent = presets, Text = "PRESETS", Font = BOLD, TextSize = 13, TextColor3 = C.muted,
 		Position = UDim2.fromOffset(16, 12), Size = UDim2.fromOffset(200, 18) })
 	local presetButtons = {}
@@ -317,7 +401,7 @@ local function build(firstTime: boolean)
 	end
 
 	-- Options (right)
-	local options = panel({ Name = "Options", Parent = root, Position = UDim2.fromOffset(782, 84), Size = UDim2.fromOffset(338, 500) })
+	local options = own("look", panel({ Name = "Options", Parent = root, Position = UDim2.fromOffset(782, 84), Size = UDim2.fromOffset(338, 500) }))
 	label({ Parent = options, Text = "BODY", Font = BOLD, TextSize = 13, TextColor3 = C.muted,
 		Position = UDim2.fromOffset(18, 14), Size = UDim2.fromOffset(120, 18) })
 	local bodyButtons = {}
@@ -352,15 +436,198 @@ local function build(firstTime: boolean)
 	y = swatchRow(options, "hair", "Hair", y)
 	swatchRow(options, "outfit", "Outfit dye", y)
 
-	-- Confirm (and cancel when reopened)
-	local confirm = button({ Name = "Confirm", Parent = root, Text = if firstTime then "Begin" else "Save look", Font = TITLE, TextSize = 26,
-		Position = UDim2.fromOffset(if firstTime then 782 else 958, 598), Size = UDim2.fromOffset(if firstTime then 338 else 162, 62) }, "gold")
-	local cancel = nil
-	local before = table.clone(look)
-	if not firstTime then
-		cancel = button({ Name = "Cancel", Parent = root, Text = "Cancel", TextSize = 18, Position = UDim2.fromOffset(782, 598),
-			Size = UDim2.fromOffset(162, 62) })
+	-- Class step ------------------------------------------------------------------------------------------------
+	local classLeft = own("class", panel({ Name = "ClassList", Parent = root, Position = UDim2.fromOffset(0, 84), Size = UDim2.fromOffset(250, 576) }))
+	sectionTitle(classLeft, "Class", 16, 12)
+	pickList(classLeft, Classes.List, {
+		prefix = "Class_", top = 36, step = 88, height = 80, titleSize = 22,
+		sub = function(c)
+			return c.Weapon .. "  ·  " .. c.Armour
+		end,
+		isOn = function(c)
+			return choice.class == c.Id
+		end,
+		onPick = function(c)
+			choice.class = c.Id
+		end,
+	})
+	local classCard = own("class", panel({ Name = "ClassCard", Parent = root, Position = UDim2.fromOffset(782, 84), Size = UDim2.fromOffset(338, 500) }))
+	local className = label({ Parent = classCard, Text = "", Font = TITLE, TextSize = 32, TextColor3 = C.gold,
+		Position = UDim2.fromOffset(18, 14), Size = UDim2.fromOffset(300, 40) })
+	local classRole = label({ Parent = classCard, Text = "", TextSize = 16, TextWrapped = true,
+		TextYAlignment = Enum.TextYAlignment.Top, Position = UDim2.fromOffset(18, 60), Size = UDim2.fromOffset(302, 88) })
+	sectionTitle(classCard, "Starting kit", 18, 160)
+	local facts = {
+		Weapon = factRow(classCard, 186, "Weapon", ""),
+		Armour = factRow(classCard, 212, "Armour", ""),
+		Power = factRow(classCard, 238, "First power", ""),
+		Discipline = factRow(classCard, 264, "Discipline", ""),
+	}
+	label({ Parent = classCard, Text = "Switch class any time at a shrine. Weapons other than the longsword are drawn when combat arrives; until then every class carries the longsword.",
+		TextSize = 13, TextColor3 = C.muted, TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top,
+		Position = UDim2.fromOffset(18, 420), Size = UDim2.fromOffset(302, 64) })
+	table.insert(refreshers, function()
+		local c = Classes.Find(choice.class)
+		className.Text = c.Name
+		classRole.Text = c.Role
+		for field, l in pairs(facts) do
+			l.Text = c[field]
+		end
+	end)
+
+	-- Origin step -----------------------------------------------------------------------------------------------
+	local originLeft = own("origin", panel({ Name = "OriginList", Parent = root, Position = UDim2.fromOffset(0, 84), Size = UDim2.fromOffset(250, 576) }))
+	sectionTitle(originLeft, "Origin", 16, 12)
+	pickList(originLeft, Origins.List, {
+		prefix = "Origin_", top = 36, step = 106, height = 96, titleSize = 21,
+		sub = function(o)
+			return o.Homeland
+		end,
+		isOn = function(o)
+			return choice.origin == o.Id
+		end,
+		onPick = function(o)
+			choice.origin = o.Id
+		end,
+	})
+	local originCard = own("origin", panel({ Name = "OriginCard", Parent = root, Position = UDim2.fromOffset(782, 84), Size = UDim2.fromOffset(338, 500) }))
+	-- a small map of the Reach: parchment-dark ground, the Scar in the south-east, one marker per homeland
+	local map = new("Frame", { Name = "Map", Parent = originCard, BorderSizePixel = 0, BackgroundColor3 = Color3.new(1, 1, 1),
+		Position = UDim2.fromOffset(18, 16), Size = UDim2.fromOffset(302, 170) }, {
+		corner(5), stroke(C.edge),
+		new("UIGradient", { Rotation = 60, Color = ColorSequence.new(Color3.fromRGB(64, 56, 44), Color3.fromRGB(34, 29, 24)) }),
+	})
+	new("Frame", { Parent = map, BorderSizePixel = 0, BackgroundColor3 = Color3.fromRGB(96, 58, 120), BackgroundTransparency = 0.55,
+		AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.82, 0.78), Size = UDim2.fromOffset(46, 20) }, { corner(10) })
+	label({ Parent = map, Text = "the Scar", TextSize = 11, TextColor3 = Color3.fromRGB(186, 160, 206), TextXAlignment = Enum.TextXAlignment.Center,
+		AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.82, 0, 0.78, 11), Size = UDim2.fromOffset(60, 12) })
+	local markers = {}
+	for _, o in ipairs(Origins.List) do
+		local dot = new("Frame", { Parent = map, BorderSizePixel = 0, BackgroundColor3 = C.goldDim, AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(o.Map.X, o.Map.Y), Size = UDim2.fromOffset(10, 10) }, { corner(8), stroke(C.inset, 2) })
+		local name = label({ Parent = map, Text = o.Homeland, TextSize = 11, TextColor3 = C.muted, TextXAlignment = Enum.TextXAlignment.Center,
+			AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(o.Map.X, 0, o.Map.Y, -9), Size = UDim2.fromOffset(130, 12) })
+		markers[o.Id] = { dot = dot, name = name }
 	end
+	local originName = label({ Parent = originCard, Text = "", Font = TITLE, TextSize = 28, TextColor3 = C.gold,
+		Position = UDim2.fromOffset(18, 196), Size = UDim2.fromOffset(300, 34) })
+	local originStory = label({ Parent = originCard, Text = "", TextSize = 15, TextWrapped = true,
+		TextYAlignment = Enum.TextYAlignment.Top, Position = UDim2.fromOffset(18, 232), Size = UDim2.fromOffset(302, 80) })
+	local originStart = factRow(originCard, 322, "You wake at", "")
+	local originUp = factRow(originCard, 348, "Trusted by", "")
+	local originDown = factRow(originCard, 374, "Wary of you", "")
+	local originItem = factRow(originCard, 400, "You carry", "")
+	originUp.TextColor3, originDown.TextColor3 = C.good, C.bad
+	label({ Parent = originCard, Text = "You still choose whom to serve at the end of Chapter 2.", TextSize = 13, TextColor3 = C.muted,
+		TextWrapped = true, Position = UDim2.fromOffset(18, 440), Size = UDim2.fromOffset(302, 40) })
+	table.insert(refreshers, function()
+		local o = Origins.Find(choice.origin)
+		originName.Text = o.Name
+		originStory.Text = o.Story
+		originStart.Text = o.Start
+		originUp.Text = o.Standing.Up
+		originDown.Text = o.Standing.Down or "No one"
+		originItem.Text = o.Item
+		for id, m in pairs(markers) do
+			local on = id == choice.origin
+			m.dot.BackgroundColor3 = if on then C.gold else C.goldDim
+			m.dot.Size = if on then UDim2.fromOffset(16, 16) else UDim2.fromOffset(10, 10)
+			m.name.TextColor3 = if on then C.text else C.muted
+		end
+	end)
+
+	-- Traits step -----------------------------------------------------------------------------------------------
+	local traitLeft = own("traits", panel({ Name = "TraitList", Parent = root, Position = UDim2.fromOffset(0, 84), Size = UDim2.fromOffset(250, 576) }))
+	sectionTitle(traitLeft, "Traits", 16, 12)
+	local traitCard = own("traits", panel({ Name = "TraitCard", Parent = root, Position = UDim2.fromOffset(782, 84), Size = UDim2.fromOffset(338, 500) }))
+	local function traitBlock(y: number)
+		local title = label({ Parent = traitCard, Text = "", Font = TITLE, TextSize = 24, TextColor3 = C.gold,
+			Position = UDim2.fromOffset(18, y), Size = UDim2.fromOffset(300, 30) })
+		local up = label({ Parent = traitCard, Text = "", TextSize = 15, TextColor3 = C.good, TextWrapped = true,
+			TextYAlignment = Enum.TextYAlignment.Top, Position = UDim2.fromOffset(18, y + 32), Size = UDim2.fromOffset(302, 36) })
+		local down = label({ Parent = traitCard, Text = "", TextSize = 15, TextColor3 = C.bad, TextWrapped = true,
+			TextYAlignment = Enum.TextYAlignment.Top, Position = UDim2.fromOffset(18, y + 68), Size = UDim2.fromOffset(302, 36) })
+		return function(trait)
+			title.Text = if trait then trait.Name else "Pick a trait"
+			title.TextColor3 = if trait then C.gold else C.muted
+			up.Text = if trait then "+  " .. trait.Up[3] else ""
+			down.Text = if trait then "-  " .. trait.Down[3] else ""
+		end
+	end
+	sectionTitle(traitCard, "Your traits", 18, 14)
+	local shows = { traitBlock(38), traitBlock(150) }
+	sectionTitle(traitCard, "Looking at", 18, 272)
+	local showHover = traitBlock(296)
+	local traitCount = label({ Parent = traitCard, Text = "", Font = BOLD, TextSize = 14, TextColor3 = C.muted,
+		TextXAlignment = Enum.TextXAlignment.Right, Position = UDim2.fromOffset(180, 14), Size = UDim2.fromOffset(140, 18) })
+	pickList(traitLeft, Traits.List, {
+		prefix = "Trait_", top = 34, step = 33.5, height = 30, titleSize = 17,
+		isOn = function(t)
+			return table.find(choice.traits, t.Id) ~= nil
+		end,
+		onPick = function(t)
+			local at = table.find(choice.traits, t.Id)
+			if at then
+				table.remove(choice.traits, at)
+			elseif #choice.traits < Traits.Pick then
+				table.insert(choice.traits, t.Id)
+			else -- full: the newest pick replaces the older one
+				table.remove(choice.traits, 1)
+				table.insert(choice.traits, t.Id)
+			end
+		end,
+		onHover = function(t)
+			showHover(t)
+		end,
+	})
+	showHover(nil)
+	table.insert(refreshers, function()
+		for i, show in ipairs(shows) do
+			show(Traits.Find(choice.traits[i]))
+		end
+		traitCount.Text = #choice.traits .. " / " .. Traits.Pick
+	end)
+
+	-- Back / Next (first time) or Cancel / Save (reopened) ------------------------------------------------------
+	local confirm = button({ Name = "Confirm", Parent = root, Text = "", Font = TITLE, TextSize = 26,
+		Position = UDim2.fromOffset(958, 598), Size = UDim2.fromOffset(162, 62) }, "gold")
+	local back = button({ Name = if firstTime then "Back" else "Cancel", Parent = root, Text = if firstTime then "Back" else "Cancel",
+		TextSize = 18, Position = UDim2.fromOffset(782, 598), Size = UDim2.fromOffset(162, 62) })
+	local before = table.clone(look)
+	local beforeClass = choice.class
+
+	local function showStep(i: number)
+		step = i
+		local id = STEPS[i][1]
+		for stepId, list in pairs(stepPanels) do
+			for _, inst in ipairs(list) do
+				(inst :: GuiObject).Visible = stepId == id
+			end
+		end
+		for k, tab in ipairs(stepTabs) do
+			tab:SetAttribute("Selected", k == i)
+			tab:FindFirstChildOfClass("UIStroke").Color = if k == i then C.gold else C.edge
+			tab.TextColor3 = if k == i then C.gold else C.text
+		end
+		subtitle.Text = HINTS[id]
+		if firstTime then
+			back.Visible = i > 1
+			confirm.Text = if i < #STEPS then "Next" else "Begin"
+		else
+			confirm.Text = "Save"
+		end
+		refresh()
+	end
+	for i, tab in ipairs(stepTabs) do
+		tab.MouseButton1Click:Connect(function()
+			showStep(i)
+		end)
+	end
+	table.insert(refreshers, function() -- Begin needs both traits
+		local ready = not firstTime or step < #STEPS or #choice.traits == Traits.Pick
+		confirm.BackgroundTransparency = if ready then 0 else 0.6
+		confirm.TextTransparency = if ready then 0 else 0.4
+	end)
 
 	-- live preview
 	local renderConn = RunService.RenderStepped:Connect(function()
@@ -391,22 +658,30 @@ local function build(firstTime: boolean)
 		gui = nil
 		holdStill(false)
 		if save then
-			remote:FireServer(Appearance.Encode(look))
+			remote:FireServer({ look = Appearance.Encode(look), class = choice.class, origin = choice.origin,
+				traits = table.clone(choice.traits) })
 		else
-			look = before
+			look, choice.class = before, beforeClass
 		end
 	end
 	confirm.MouseButton1Click:Connect(function()
-		close(true)
+		if firstTime and step < #STEPS then
+			showStep(step + 1)
+		elseif not firstTime or #choice.traits == Traits.Pick then
+			close(true)
+		end
 	end)
-	if cancel then
-		cancel.MouseButton1Click:Connect(function()
+	back.MouseButton1Click:Connect(function()
+		if firstTime then
+			showStep(math.max(1, step - 1))
+		else
 			close(false)
-		end)
-	end
+		end
+	end)
 
 	holdStill(true)
 	gui = screen
+	showStep(1)
 	setLook(look)
 end
 
@@ -415,6 +690,9 @@ local function open(firstTime: boolean)
 		return
 	end
 	look = Appearance.Decode(player:GetAttribute("Appearance"))
+	local saved = Profile.Sanitize({ class = player:GetAttribute("Class"), origin = player:GetAttribute("Origin"),
+		traits = Profile.DecodeTraits(player:GetAttribute("Traits")) })
+	choice = { class = saved.class, origin = saved.origin, traits = saved.traits }
 	build(firstTime)
 end
 
